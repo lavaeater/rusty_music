@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 bevy = "0.13"
 bevy_fundsp = { git="https://github.com/lavaeater/bevy_fundsp.git", branch = "bevy-0.13"}
+uuid = { version = "1.7.0", features = ["v4"] }
 
 [profile.dev.package."*"]
 opt-level = 3
