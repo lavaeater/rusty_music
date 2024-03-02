@@ -87,9 +87,10 @@ pub fn play_sound_on_the_beat(
     samples_query: Query<(&AudioSink, &Sample)>
 ) {
     for beat in beat_reader.read() {
-        println!("Quarter: {}, Eight: {}, Sixteenth: {}", beat.quarter, beat.eigth, beat.sixteenth);
+        println!("Quarter: {}, Eight: {}, Sixteenth: {},", beat.quarter, beat.eigth, beat.sixteenth);
         for (audio_sink, sample) in samples_query.iter() {
             if beat.sixteenth % sample.play_at_sixteenth == 0 {
+                println!("Play note");
                 audio_sink.play();
             }
         }
