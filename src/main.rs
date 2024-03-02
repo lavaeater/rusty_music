@@ -1,12 +1,21 @@
 #![allow(clippy::precedence)]
 
+mod clock;
+
 use {bevy::prelude::*, bevy_fundsp::prelude::*, uuid::Uuid};
+use crate::clock::{Beat, beat_system, Clock, play_sound_on_the_beat};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(DspPlugin::default())
-        .add_plugins(PianoPlugin)
+        .insert_resource(Clock::new(120.0))
+        .add_event::<Beat>()
+        .add_systems(Update, (
+            beat_system,
+            play_sound_on_the_beat
+            ))
+        // .add_plugins(DspPlugin::default())
+        // .add_plugins(PianoPlugin)
         .run();
 }
 
