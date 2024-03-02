@@ -1,6 +1,8 @@
 use bevy::audio::AudioSink;
 use bevy::input::ButtonInput;
 use bevy::prelude::{AudioSinkPlayback, Event, EventReader, EventWriter, KeyCode, Query, Res, ResMut, Resource, Time};
+use crate::Dsp;
+
 #[derive(Debug, Clone, Copy, Resource)]
 pub struct Clock {
     pub bpm: f32, // quarter notes per minute
@@ -81,13 +83,21 @@ pub fn beat_system(
 
 pub fn play_sound_on_the_beat(
     mut beat_reader: EventReader<Beat>,
+    mut query: Query<(&mut AudioSink, &Dsp)>
 ) {
     for beat in beat_reader.read() {
         println!("Quarter: {}, Eight: {}, Sixteenth: {}", beat.quarter, beat.eigth, beat.sixteenth);
-        if beat.eigth % 4 == 0 {
-            println!("Bass Drum");
-        } else {
-            println!("Snare Drum");
+        if beat.quarter % 4 == 0 {
+            for (sink, _) in query.iter_mut().filter(|(_s, d)| **d == Dsp::Sine) {
+                sink.play();
+                println!("Bass Drum");
+            }
+        }
+        if beat.quarter % 3 == 0 {
+            for (sink, _) in query.iter_mut().filter(|(_s, d)| **d == Dsp::Triangle) {
+                sink.play();
+                println!("Snare Drum");
+            }
         }
     }
 }

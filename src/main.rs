@@ -2,141 +2,69 @@
 
 mod clock;
 
+use bevy::audio::PlaybackMode;
 use {bevy::prelude::*, bevy_fundsp::prelude::*, uuid::Uuid};
 use crate::clock::{Beat, beat_system, Clock, play_sound_on_the_beat};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugins(DspPlugin::default())
         .insert_resource(Clock::new(120.0))
         .add_event::<Beat>()
+        .add_dsp_source(sine_wave, SourceType::Static { duration: 60.0 / 120.0 / 2.0 }) //Fix duration later, bro
+        .add_dsp_source(triangle_wave, SourceType::Static { duration: 60.0 / 120.0 / 2.0 })
+        .add_systems(Startup, setup)
         .add_systems(Update, (
             beat_system,
             play_sound_on_the_beat
             ))
-        // .add_plugins(DspPlugin::default())
-        // .add_plugins(PianoPlugin)
         .run();
 }
 
-struct PianoPlugin;
-
-struct PianoDsp<F>(F);
-
-impl<T: AudioUnit32 + 'static, F: Send + Sync + 'static + Fn() -> T> DspGraph for PianoDsp<F> {
-    fn id(&self) -> Uuid {
-        Uuid::from_u128(0xa1a2a3a4b1b2c1c2d1d2d3d4d5d6d7d8u128)
-    }
-
-    fn generate_graph(&self) -> Box<dyn AudioUnit32> {
-        Box::new((self.0)())
-    }
+fn sine_wave() -> impl AudioUnit32 {
+    // Note is A4
+    sine_hz(440.0) >> split::<U2>() * 0.2
 }
 
-#[derive(Debug, Resource)]
-struct PianoId(Uuid);
-
-#[derive(Resource)]
-struct PitchVar(Shared<f32>);
-
-impl PitchVar {
-    fn set_pitch(&self, pitch: Pitch) {
-        self.0.set_value(pitch.into());
-    }
+fn triangle_wave() -> impl AudioUnit32 {
+    // Note is G4
+    triangle_hz(392.0) >> split::<U2>() * 0.2
 }
 
-#[derive(Debug, Clone, Copy)]
-enum Pitch {
-    C,
-    Cs,
-    D,
-    Ds,
-    E,
-    F,
-    Fs,
-    G,
-    Gs,
-    A,
-    As,
-    B,
+
+#[derive(Component, Clone, Copy, PartialEq)]
+enum Dsp {
+    Sine,
+    Triangle,
 }
 
-impl Pitch {
-    fn to_f32(self) -> f32 {
-        match self {
-            Pitch::C => 261.626,
-            Pitch::Cs => 277.183,
-            Pitch::D => 293.665,
-            Pitch::Ds => 311.127,
-            Pitch::E => 329.628,
-            Pitch::F => 349.228,
-            Pitch::Fs => 369.994,
-            Pitch::G => 391.995,
-            Pitch::Gs => 415.305,
-            Pitch::A => 440.0,
-            Pitch::As => 466.164,
-            Pitch::B => 493.883,
-        }
-    }
-}
-
-impl From<Pitch> for f32 {
-    fn from(pitch: Pitch) -> Self {
-        pitch.to_f32()
-    }
-}
-
-impl Plugin for PianoPlugin {
-    fn build(&self, app: &mut App) {
-        let pitch = shared(Pitch::C.into());
-        let pitch2 = pitch.clone();
-
-        let piano = move || var(&pitch2) >> square() >> split::<U2>() * 0.2;
-        let piano_dsp = PianoDsp(piano.clone());
-        let piano_id = piano_dsp.id();
-
-        app.add_dsp_source(piano_dsp, SourceType::Dynamic)
-            .insert_resource(PitchVar(pitch))
-            .insert_resource(PianoId(piano_id))
-            .add_systems(Update, switch_key)
-            .add_systems(PostStartup, play_piano);
-    }
-}
-
-fn switch_key(input: Res<ButtonInput<KeyCode>>, pitch_var: Res<PitchVar>) {
-    let keypress = |keycode, pitch| {
-        if input.just_pressed(keycode) {
-            pitch_var.set_pitch(pitch)
-        }
-    };
-
-    keypress(KeyCode::KeyA, Pitch::C);
-    keypress(KeyCode::KeyW, Pitch::Cs);
-    keypress(KeyCode::KeyS, Pitch::D);
-    keypress(KeyCode::KeyE, Pitch::Ds);
-    keypress(KeyCode::KeyD, Pitch::E);
-    keypress(KeyCode::KeyF, Pitch::F);
-    keypress(KeyCode::KeyT, Pitch::Fs);
-    keypress(KeyCode::KeyG, Pitch::G);
-    keypress(KeyCode::KeyY, Pitch::Gs);
-    keypress(KeyCode::KeyH, Pitch::A);
-    keypress(KeyCode::KeyU, Pitch::As);
-    keypress(KeyCode::KeyJ, Pitch::B);
-}
-
-fn play_piano(
+fn setup(
     mut commands: Commands,
     mut assets: ResMut<Assets<DspSource>>,
     dsp_manager: Res<DspManager>,
-    piano_id: Res<PianoId>,
 ) {
-    let source = assets.add(
-        dsp_manager
-            .get_graph_by_id(&piano_id.0)
-            .unwrap_or_else(|| panic!("DSP source not found!")),
-    );
-    commands.spawn(AudioSourceBundle {
-        source,
-        ..default()
-    });
+    commands.spawn((
+        AudioSourceBundle {
+            source: assets.add(dsp_manager.get_graph(sine_wave).unwrap()),
+            settings: PlaybackSettings {
+                paused: true,
+                mode: PlaybackMode::Once,
+                ..default()
+            },
+        },
+        Dsp::Sine,
+    ));
+
+    commands.spawn((
+        AudioSourceBundle {
+            source: assets.add(dsp_manager.get_graph(triangle_wave).unwrap()),
+            settings: PlaybackSettings {
+                paused: true,
+                mode: PlaybackMode::Once,
+                ..default()
+            },
+        },
+        Dsp::Triangle,
+    ));
 }
