@@ -27,7 +27,7 @@ impl Cooldown for Clock {
         }
 
         if self.cooldown < 0.0 {
-            self.cooldown = 60.0 / self.bpm;
+            self.cooldown = 60.0 / self.bpm / 4.0;
             return true;
         }
 
@@ -40,14 +40,19 @@ impl Clock {
         Self {
             bpm,
             playing: true,
-            cooldown: 60.0 / bpm,
+            cooldown: 60.0 / bpm / 4.0, // 16th notes
             beat_count: 0,
             sixty_seconds: 0.0,
         }
     }
 
     pub fn get_beat(&self) -> u32 {
-        let beat = self.sixty_seconds * self.bpm ;
+        let beat = self.sixty_seconds * self.bpm;
+        (beat / 60.0) as u32 // what beat are we on, bro?
+    }
+
+    pub fn get_exact_notes(&self, factor: f32) -> u32 {
+        let beat = self.sixty_seconds * self.bpm * factor;
         (beat / 60.0) as u32 // what beat are we on, bro?
     }
 }
@@ -55,7 +60,9 @@ impl Clock {
 #[derive(Debug, Clone, Copy, Event)]
 pub struct Beat {
     clock_time: f32,
-    beat_count: u32,
+    quarter: u32,
+    eigth: u32,
+    sixteenth: u32,
 }
 
 pub fn beat_system(
@@ -65,7 +72,9 @@ pub fn beat_system(
     if clock.cooldown(time.delta_seconds()) {
         beat_sender.send(Beat {
             clock_time: clock.sixty_seconds,
-            beat_count: clock.get_beat(),
+            quarter: clock.get_beat(),
+            eigth: clock.get_exact_notes(2.0),
+            sixteenth: clock.get_exact_notes(4.0),
         });
     }
 }
@@ -74,8 +83,8 @@ pub fn play_sound_on_the_beat(
     mut beat_reader: EventReader<Beat>,
 ) {
     for beat in beat_reader.read() {
-        println!("Beat: {}", beat.beat_count);
-        if beat.beat_count % 4 == 0 {
+        println!("Quarter: {}, Eight: {}, Sixteenth: {}", beat.quarter, beat.eigth, beat.sixteenth);
+        if beat.eigth % 4 == 0 {
             println!("Bass Drum");
         } else {
             println!("Snare Drum");
