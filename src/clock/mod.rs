@@ -1,10 +1,10 @@
 use bevy::audio::AudioSink;
-use bevy::input::ButtonInput;
 use bevy::prelude::{AudioSinkPlayback, Event, EventReader, EventWriter, KeyCode, Query, Res, ResMut, Resource, Time};
-use crate::Dsp;
+use crate::Sample;
 
 #[derive(Debug, Clone, Copy, Resource)]
 pub struct Clock {
+    pub beats: f32, // beats per measure
     pub bpm: f32, // quarter notes per minute
     pub playing: bool,
     pub cooldown: f32,
@@ -29,7 +29,7 @@ impl Cooldown for Clock {
         }
 
         if self.cooldown < 0.0 {
-            self.cooldown = 60.0 / self.bpm / 4.0;
+            self.cooldown = 60.0 / self.bpm / self.beats / 4.0;
             return true;
         }
 
@@ -38,11 +38,12 @@ impl Cooldown for Clock {
 }
 
 impl Clock {
-    pub fn new(bpm: f32) -> Self {
+    pub fn new(beats: f32, bpm: f32) -> Self {
         Self {
+            beats,
             bpm,
             playing: true,
-            cooldown: 60.0 / bpm / 4.0, // 16th notes
+            cooldown: 60.0 / bpm / beats / 4.0,
             beat_count: 0,
             sixty_seconds: 0.0,
         }
@@ -83,22 +84,24 @@ pub fn beat_system(
 
 pub fn play_sound_on_the_beat(
     mut beat_reader: EventReader<Beat>,
-    mut query: Query<(&mut AudioSink, &Dsp)>
+    samples_query: Query<(&AudioSink, &Sample)>
 ) {
     for beat in beat_reader.read() {
         println!("Quarter: {}, Eight: {}, Sixteenth: {}", beat.quarter, beat.eigth, beat.sixteenth);
-        if beat.quarter % 4 == 0 {
-            for (sink, _) in query.iter_mut().filter(|(_s, d)| **d == Dsp::Sine) {
-                sink.play();
-                println!("Bass Drum");
+        for (audio_sink, sample) in samples_query.iter() {
+            if beat.sixteenth % sample.play_at_sixteenth == 0 {
+                audio_sink.play();
             }
         }
-        if beat.quarter % 3 == 0 {
-            for (sink, _) in query.iter_mut().filter(|(_s, d)| **d == Dsp::Triangle) {
-                sink.play();
-                println!("Snare Drum");
-            }
-        }
+
+        //
+        //
+        // if beat.quarter % 4 == 0 {
+        //         println!("Bass Drum");
+        // }
+        // if beat.quarter % 3 == 0 {
+        //         println!("Snare Drum");
+        // }
     }
 }
 
