@@ -28,9 +28,8 @@ bevy = { version = "0.13", default-features = false, features = [
     "default_font",
     "webgl2",
     "bevy_debug_stepping",
-    "wav"
 ] }
-bevy_kira_audio = { version = "0.19" }
+bevy_kira_audio = { version = "0.19" , features = ["wav"]}
 
 [profile.dev.package."*"]
 opt-level = 3

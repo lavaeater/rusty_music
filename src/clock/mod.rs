@@ -1,11 +1,13 @@
-use bevy::audio::AudioSink;
-use bevy::prelude::{AudioSinkPlayback, Event, EventReader, EventWriter, KeyCode, Query, Res, ResMut, Resource, Time};
+use bevy::prelude::{Assets, Event, EventReader, EventWriter, Query, Res, ResMut, Resource, Time};
+use bevy_kira_audio::{Audio, AudioControl, AudioInstance, AudioTween, PlaybackState};
 use crate::Sample;
 
 #[derive(Debug, Clone, Copy, Resource)]
 pub struct Clock {
-    pub beats: f32, // beats per measure
-    pub bpm: f32, // quarter notes per minute
+    pub beats: f32,
+    // beats per measure
+    pub bpm: f32,
+    // quarter notes per minute
     pub playing: bool,
     pub cooldown: f32,
     pub sixty_seconds: f32,
@@ -28,8 +30,8 @@ impl Cooldown for Clock {
             self.sixty_seconds = 0.0;
         }
 
-        if self.cooldown < 0.0 {
-            self.cooldown = 60.0 / self.bpm / self.beats / 4.0;
+        if self.cooldown <= 0.0 {
+            self.cooldown = 60.0 / self.bpm / self.beats;
             return true;
         }
 
@@ -43,7 +45,7 @@ impl Clock {
             beats,
             bpm,
             playing: true,
-            cooldown: 60.0 / bpm / beats / 4.0,
+            cooldown: 60.0 / bpm / beats,
             beat_count: 0,
             sixty_seconds: 0.0,
         }
@@ -70,7 +72,7 @@ pub struct Beat {
 
 pub fn beat_system(
     mut clock: ResMut<Clock>, time: Res<Time>,
-    mut beat_sender: EventWriter<Beat>
+    mut beat_sender: EventWriter<Beat>,
 ) {
     if clock.cooldown(time.delta_seconds()) {
         beat_sender.send(Beat {
@@ -84,14 +86,18 @@ pub fn beat_system(
 
 pub fn play_sound_on_the_beat(
     mut beat_reader: EventReader<Beat>,
-    samples_query: Query<(&AudioSink, &Sample)>
+    audio: Res<Audio>,
+    samples_query: Query<&Sample>,
 ) {
     for beat in beat_reader.read() {
-        println!("Quarter: {}, Eight: {}, Sixteenth: {},", beat.quarter, beat.eigth, beat.sixteenth);
-        for (audio_sink, sample) in samples_query.iter() {
-            if beat.sixteenth % sample.play_at_sixteenth == 0 {
-                println!("Play note");
-                audio_sink.play();
+        // println!("Quarter: {}, Eight: {}, Sixteenth: {},", beat.quarter, beat.eigth, beat.sixteenth);
+        for sample in samples_query.iter() {
+            println!("Sixteenth: {}, Sample: {}, Modulo: {}",
+                   beat.sixteenth,
+                   sample.play_every_sixteenth,
+                   beat.sixteenth % sample.play_every_sixteenth);
+            if beat.sixteenth % sample.play_every_sixteenth == 0 {
+                audio.play(sample.handle.clone_weak());
             }
         }
 

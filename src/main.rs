@@ -1,7 +1,6 @@
 mod clock;
 
-use bevy::audio::PlaybackMode;
-use bevy_kira_audio::AudioPlugin;
+use bevy_kira_audio::{Audio, AudioControl, AudioInstance, AudioPlugin, AudioSource};
 use {bevy::prelude::*};
 use crate::clock::{Beat, beat_system, Clock, play_sound_on_the_beat};
 
@@ -19,10 +18,11 @@ fn main() {
         .run();
 }
 
-#[derive(Component, Clone, Copy, PartialEq)]
+#[derive(Component, Clone, PartialEq)]
 pub struct Sample {
-    pub play_at_sixteenth: u32,
-    pub play_at_offset: u32
+    pub play_every_sixteenth: u32,
+    pub play_at_offset: u32,
+    pub handle: Handle<AudioSource>
 }
 
 fn setup(
@@ -31,16 +31,9 @@ fn setup(
 ) {
     commands.spawn((
         Sample {
-            play_at_sixteenth: 2,
-            play_at_offset: 1
-        },
-        AudioBundle {
-            source: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav"),
-            settings: PlaybackSettings {
-                paused: true,
-                mode: PlaybackMode::Once,
-                ..default()
-            },
-        })
+            play_every_sixteenth: 32,
+            play_at_offset: 1,
+            handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav")
+        },)
     );
 }
