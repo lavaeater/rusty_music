@@ -1,5 +1,5 @@
-use bevy::prelude::{Assets, Event, EventReader, EventWriter, Query, Res, ResMut, Resource, Time};
-use bevy_kira_audio::{Audio, AudioControl, AudioInstance, AudioTween, PlaybackState};
+use bevy::prelude::{Event, EventReader, EventWriter, Query, Res, ResMut, Resource, Time};
+use bevy_kira_audio::{Audio, AudioControl};
 use crate::Sample;
 
 #[derive(Debug, Clone, Copy, Resource)]
