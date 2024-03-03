@@ -8,7 +8,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(AudioPlugin)
-        .insert_resource(Clock::new(4.0, 120.0))
+        .insert_resource(Clock::new(4.0, 80.0))
         .add_event::<Beat>()
         .add_systems(Startup, setup)
         .add_systems(Update, (
@@ -32,8 +32,16 @@ fn setup(
     commands.spawn((
         Sample {
             play_every_sixteenth: 4,
-            play_at_offset: 1,
+            play_at_offset: 0,
             handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav")
+        },)
+    );
+
+    commands.spawn((
+        Sample {
+            play_every_sixteenth: 2,
+            play_at_offset: 0,
+            handle: asset_server.load("samples/drums/kit-d/80PD_KitD-ClHat.wav")
         },)
     );
 }
