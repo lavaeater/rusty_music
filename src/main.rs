@@ -1,8 +1,10 @@
 mod clock;
+mod player;
 
-use bevy_kira_audio::{Audio, AudioControl, AudioInstance, AudioPlugin, AudioSource};
-use {bevy::prelude::*};
-use crate::clock::{Beat, beat_system, Clock, play_sound_on_the_beat};
+use bevy_kira_audio::{AudioPlugin, AudioSource};
+use bevy::prelude::*;
+use player::play_sound_on_the_beat;
+use crate::clock::{Beat, Clock, progress_clock_system};
 
 fn main() {
     App::new()
@@ -12,7 +14,7 @@ fn main() {
         .add_event::<Beat>()
         .add_systems(Startup, setup)
         .add_systems(Update, (
-            beat_system,
+            progress_clock_system,
             play_sound_on_the_beat
         ))
         .run();
