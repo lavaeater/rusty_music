@@ -31,7 +31,7 @@ fn setup(
 ) {
     commands.spawn((
         Sample {
-            play_every_sixteenth: 32,
+            play_every_sixteenth: 4,
             play_at_offset: 1,
             handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav")
         },)

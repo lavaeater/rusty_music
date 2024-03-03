@@ -27,11 +27,11 @@ impl Cooldown for Clock {
         self.cooldown -= delta;
 
         if self.sixty_seconds >= 60.0 {
-            self.sixty_seconds = 0.0;
+            self.sixty_seconds = 0.0 + self.sixty_seconds - 60.0;
         }
 
-        if self.cooldown <= 0.0 {
-            self.cooldown = 60.0 / self.bpm / self.beats;
+        if self.cooldown < 0.0 {
+            self.cooldown = 60.0 / self.bpm / self.beats + self.cooldown.abs();
             return true;
         }
 
@@ -58,7 +58,7 @@ impl Clock {
 
     pub fn get_exact_notes(&self, factor: f32) -> u32 {
         let beat = self.sixty_seconds * self.bpm * factor;
-        (beat / 60.0) as u32 // what beat are we on, bro?
+        (beat / 60.0).floor() as u32 // what beat are we on, bro?
     }
 }
 
@@ -96,7 +96,7 @@ pub fn play_sound_on_the_beat(
                    beat.sixteenth,
                    sample.play_every_sixteenth,
                    beat.sixteenth % sample.play_every_sixteenth);
-            if beat.sixteenth % sample.play_every_sixteenth == 0 {
+            if (beat.sixteenth + sample.play_at_offset) % sample.play_every_sixteenth == 0 {
                 audio.play(sample.handle.clone_weak());
             }
         }
