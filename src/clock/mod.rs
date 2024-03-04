@@ -1,4 +1,7 @@
-use bevy::prelude::{Event, EventWriter, Res, ResMut, Resource, Time};
+use bevy::asset::Handle;
+use bevy::prelude::{Component, Event, EventWriter, Res, ResMut, Resource, Time};
+use bevy::utils::HashMap;
+use bevy_kira_audio::AudioSource;
 
 #[derive(Debug, Clone, Copy, Resource)]
 pub struct Clock {
@@ -69,6 +72,100 @@ pub struct Beat {
     pub elapsed_time: f32,
     pub beat: u32,
     pub bar: u32,
+}
+
+// signal(beat: Int, thisNoteIndex: Int, timeBars: Float, hitTime: Float, baseIntensity: Float)
+trait MusicPlayer {
+    fn signal(&self, beat: Beat, base_intensity: f32);
+    fn set_chord(chord: Chord);
+    fn play(&self, beat: Beat, note_index: u32, global_intensity: f32);
+}
+
+// fn to_pitch(midi_diff:i32)-> f32 {
+// let minPitch = -12;
+// let  maxPitch = 12;
+// /**
+//  * Hmm. So, -12 is 0.5f in pitch,
+//  * + 12 is 2.0f
+//  *
+//  * 0 is 1f
+//  *
+//  *
+//  */
+// if (midi_diff < 0) {
+// if (midi_diff < minPitch) {
+//     0.5f
+// } else
+// this.fromMidiToPitch()
+// //1f - (1f / (maxPitch * 2 / this.absoluteValue.toFloat()))
+// } else if (this > 0) {
+// if (this > maxPitch)
+// 2f
+// else {
+// this.fromMidiToPitch()
+// //            1f + norm(0f, 12f, this.toFloat())
+// }
+// } else {
+// 1f
+// }
+// }
+
+// fromMidiToPitch(): Float {
+// /**
+//  * The midi reference note is apparently 69, not 60...
+//  */
+//
+// val f = 2f.pow(this.toFloat() / 12f) //This should give us a factor, right?
+// return f
+// }
+
+
+pub struct Sampler {
+    pub handle: Handle<AudioSource>
+}
+
+pub struct Drummer {
+    pub name: String,
+    pub sampler: Sampler,
+    pub notes: HashMap<u32, Note>
+}
+
+impl MusicPlayer for Drummer {
+    fn signal(&self, beat: Beat, base_intensity: f32) {
+        if let Some(note) = self.notes.get(&beat.beat) {
+            let intensity = note.strength * base_intensity;
+            self.play(beat, note.midi_note_diff as u32, intensity);
+        }
+        let note = self.notes.get(&beat.beat).unwrap();
+        let intensity = note.strength * base_intensity;
+        self.play(beat, note.midi_note_diff as u32, intensity);
+    }
+
+    fn set_chord(chord: Chord) {
+        // let note = self.notes.get(&beat.beat).unwrap();
+        // let intensity = note.strength * base_intensity;
+        // self.play(beat, note.midi_note_diff as u32, intensity);
+    }
+
+    fn play(&self, beat: Beat, note_index: u32, global_intensity: f32) {
+        // let note = self.notes.get(&beat.beat).unwrap();
+        // let intensity = note.strength * base_intensity;
+        // self.play(beat, note.midi_note_diff as u32, intensity);
+    }
+}
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Note {
+    pub midi_note_diff: i32,
+    pub strength: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Chord {
+    pub bar: u32,
+    pub chord_notes: Vec<Note>,
+    pub scale_notes: Vec<Note>
 }
 
 pub fn progress_clock_system(
