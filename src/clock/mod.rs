@@ -1,7 +1,7 @@
 use bevy::asset::Handle;
 use bevy::prelude::{Component, Event, EventWriter, Res, ResMut, Resource, Time};
 use bevy::utils::HashMap;
-use bevy_kira_audio::AudioSource;
+use bevy_kira_audio::{Audio, AudioControl, AudioSource};
 
 #[derive(Debug, Clone, Copy, Resource)]
 pub struct Clock {
@@ -75,10 +75,35 @@ pub struct Beat {
 }
 
 // signal(beat: Int, thisNoteIndex: Int, timeBars: Float, hitTime: Float, baseIntensity: Float)
-trait MusicPlayer {
-    fn signal(&self, beat: Beat, base_intensity: f32);
-    fn set_chord(chord: Chord);
-    fn play(&self, beat: Beat, note_index: u32, global_intensity: f32);
+pub trait MusicPlayer: Send + Sync {
+    fn signal(&self, audio: &Res<Audio>, beat: Beat, global_intensity: f32);
+    fn set_chord(&self, chord: Chord);
+    fn play(&self, audio: &Res<Audio>, beat: Beat, midi_note_diff: i32);
+}
+
+fn midi_diff_to_pitch(midi_diff: i32) -> f64 {
+    let min_pitch = -12;
+    let max_pitch = 12;
+    if midi_diff < 0 {
+        if midi_diff < min_pitch {
+            0.5
+        } else {
+            midi_diff_to_pitch_what(midi_diff)
+        }
+    } else if midi_diff > 0 {
+        if midi_diff > max_pitch {
+            2.0
+        } else {
+            midi_diff_to_pitch_what(midi_diff)
+        }
+    } else {
+        1.0
+    }
+}
+
+fn midi_diff_to_pitch_what(midi_diff: i32) -> f64 {
+    let f = 2.0f64.powf(midi_diff as f64 / 12.0);
+    f
 }
 
 // fn to_pitch(midi_diff:i32)-> f32 {
@@ -131,41 +156,44 @@ pub struct Drummer {
 }
 
 impl MusicPlayer for Drummer {
-    fn signal(&self, beat: Beat, base_intensity: f32) {
+    fn signal(&self, audio: &Res<Audio>, beat: Beat, base_intensity: f32) {
         if let Some(note) = self.notes.get(&beat.beat) {
-            let intensity = note.strength * base_intensity;
-            self.play(beat, note.midi_note_diff as u32, intensity);
+            let minIntensity = 1.0 - base_intensity;
+            if note.strength >= minIntensity {
+                self.play(audio, beat, note.midi_note_diff);
+            }
         }
-        let note = self.notes.get(&beat.beat).unwrap();
-        let intensity = note.strength * base_intensity;
-        self.play(beat, note.midi_note_diff as u32, intensity);
     }
 
-    fn set_chord(chord: Chord) {
-        // let note = self.notes.get(&beat.beat).unwrap();
-        // let intensity = note.strength * base_intensity;
-        // self.play(beat, note.midi_note_diff as u32, intensity);
+    fn set_chord(&self, chord: Chord) {
+        //We don't do diddly if we are a drummer here.
     }
 
-    fn play(&self, beat: Beat, note_index: u32, global_intensity: f32) {
-        // let note = self.notes.get(&beat.beat).unwrap();
-        // let intensity = note.strength * base_intensity;
-        // self.play(beat, note.midi_note_diff as u32, intensity);
+    fn play(&self, audio: &Res<Audio>, beat: Beat, midi_note_diff: i32) {
+        audio.play(self.sampler.handle.clone_weak())
+            .with_playback_rate(midi_diff_to_pitch(midi_note_diff))
+        ;
     }
 }
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Note {
     pub midi_note_diff: i32,
     pub strength: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Chord {
     pub bar: u32,
     pub chord_notes: Vec<Note>,
     pub scale_notes: Vec<Note>
+}
+
+#[derive(Resource)]
+pub struct Conductor {
+    pub musicians: Vec<Box<dyn MusicPlayer>>
+
 }
 
 pub fn progress_clock_system(
