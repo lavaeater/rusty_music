@@ -1,12 +1,18 @@
 mod clock;
 mod player;
 mod conductor;
+mod musicians;
 
-use bevy_kira_audio::{AudioPlugin, AudioSource};
+use bevy_kira_audio::AudioPlugin;
 use bevy::prelude::*;
 use bevy::utils::hashbrown::HashMap;
+use musicians::{Note, Sampler};
+use musicians::conductor::Conductor;
+use musicians::drummer::Drummer;
 use player::play_sound_on_the_beat;
-use crate::clock::{Beat, Clock, Conductor, Drummer, Note, progress_clock_system, Sampler};
+use crate::clock::{Beat, Clock, progress_clock_system};
+use crate::musicians::bassist::Bassist;
+use crate::musicians::Chord;
 
 fn main() {
     let beats = 4;
@@ -27,19 +33,22 @@ fn main() {
         .run();
 }
 
-#[derive(Component, Clone, PartialEq)]
-pub struct Sample {
-    pub play_on_every_n_beats: u32,
-    pub play_at_offset: u32,
-    pub handle: Handle<AudioSource>,
-}
-
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
 
     commands.insert_resource((Conductor {
+        chords: vec![
+            Chord::new(0, vec![
+                Note::new(0, 1.0),
+                Note::new(0, 0.5),
+            ], vec![]),
+            Chord::new(1, vec![
+                Note::new(-2, 1.0),
+                Note::new(1, 0.5),
+            ], vec![])
+        ],
         musicians: vec![
             Box::new(Drummer {
                 name: "Kick".to_string(),
@@ -95,6 +104,12 @@ fn setup(
                         strength: 0.5,
                     })
                 }).collect::<HashMap<u32, Note>>()),
+            }),
+            Box::new(Bassist {
+                name: "Bass".to_string(),
+                sampler: Sampler {
+                    handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav")
+                },
             }),
         ]
     }));

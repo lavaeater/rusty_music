@@ -1,13 +1,13 @@
-use bevy::prelude::{EventReader, Local, Query, Res};
-use bevy_kira_audio::{Audio, AudioControl};
-use crate::clock::{Beat, Conductor};
-use crate::Sample;
+use bevy::prelude::{EventReader, Local, Res};
+use bevy_kira_audio::Audio;
+use crate::clock::Beat;
+use crate::musicians::conductor::Conductor;
 
 pub fn play_sound_on_the_beat(
     mut beat_reader: EventReader<Beat>,
     audio: Res<Audio>,
     conductor: Res<Conductor>,
-    mut intensity: Local<f32>
+    mut intensity: Local<f32>,
 ) {
     // *intensity += 0.01;
     // if *intensity >= 1.0 {
@@ -20,8 +20,12 @@ pub fn play_sound_on_the_beat(
         } else {
             *intensity = 0.5;
         }
+
+        let chord_bar = beat.bar % conductor.chords.len() as u32;
+        let chord = &conductor.chords[chord_bar as usize];
+
         conductor.musicians.iter().for_each(|musician| {
-           musician.signal(&audio, *beat, intensity.abs());
+            musician.signal(&audio, *beat, intensity.abs(), chord);
         });
     }
 }
