@@ -9,16 +9,21 @@ use player::play_sound_on_the_beat;
 use crate::clock::{Beat, Clock, Conductor, Drummer, Note, progress_clock_system, Sampler};
 
 fn main() {
+    let beats = 4;
+    let note_type = 4;
+    let bpm = 80.0;
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(AudioPlugin)
-        .insert_resource(Clock::new(4, 4, 80.0))
+        .insert_resource(Clock::new(beats, note_type, bpm))
+        // .add_systems(FixedUpdate, progress_clock_system)
+        // configure our fixed timestep schedule to run twice a second
+        // .insert_resource(Time::<Fixed>::from_seconds((60.0 / bpm as f64 / beats as f64) / (beats as f64 / beats as f64)))
         .add_event::<Beat>()
         .add_systems(Startup, setup)
         .add_systems(Update, (
             progress_clock_system,
-            play_sound_on_the_beat
-        ))
+            play_sound_on_the_beat))
         .run();
 }
 
@@ -26,14 +31,13 @@ fn main() {
 pub struct Sample {
     pub play_on_every_n_beats: u32,
     pub play_at_offset: u32,
-    pub handle: Handle<AudioSource>
+    pub handle: Handle<AudioSource>,
 }
 
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
-
     commands.insert_resource((Conductor {
         musicians: vec![Box::new(Drummer {
             name: "Kick".to_string(),
@@ -43,15 +47,22 @@ fn setup(
             notes: HashMap::from([
                 (0, Note {
                     midi_note_diff: 0,
-                    strength: 1.0
+                    strength: 1.0,
                 }),
-                (2, Note {
+                (4, Note {
                     midi_note_diff: 0,
-                    strength: 0.7
+                    strength: 1.0,
+                }),
+                (8, Note {
+                    midi_note_diff: 0,
+                    strength: 1.0,
+                }),
+                (12, Note {
+                    midi_note_diff: 0,
+                    strength: 1.0,
                 })
-            ])
+            ]),
         })]
-
     }));
     // commands.spawn((
     //     Sample {

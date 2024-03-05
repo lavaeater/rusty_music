@@ -31,8 +31,9 @@ impl ProgressClock for Clock {
         
         if self.accumulator >= self.beat_length {
             self.accumulator -= self.beat_length;
+            // self.accumulator = 0.0;
             self.beat += 1;
-            if self.beat >= self.beats as u32 {
+            if self.beat >= self.beats as u32 * 4 {
                 self.beat = 0;
                 self.bar += 1;
             }
