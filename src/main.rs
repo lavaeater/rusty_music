@@ -38,47 +38,65 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
+
     commands.insert_resource((Conductor {
-        musicians: vec![Box::new(Drummer {
-            name: "Kick".to_string(),
-            sampler: Sampler {
-                handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav")
-            },
-            notes: HashMap::from([
-                (0, Note {
-                    midi_note_diff: 0,
-                    strength: 0.5,
-                }),
-                (2, Note {
-                    midi_note_diff: 0,
-                    strength: 1.0,
-                }),
-                (4, Note {
-                    midi_note_diff: 0,
-                    strength: 0.5,
-                }),
-                (6, Note {
-                    midi_note_diff: 0,
-                    strength: 1.0,
-                }),
-                (8, Note {
-                    midi_note_diff: 0,
-                    strength: 0.5,
-                }),
-                (10, Note {
-                    midi_note_diff: 0,
-                    strength: 1.0,
-                }),
-                (12, Note {
-                    midi_note_diff: 0,
-                    strength: 0.5,
-                }),
-                (15, Note {
-                    midi_note_diff: 0,
-                    strength: 1.0,
-                })
-            ]),
-        })]
+        musicians: vec![
+            Box::new(Drummer {
+                name: "Kick".to_string(),
+                sampler: Sampler {
+                    handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav")
+                },
+                notes: HashMap::from([
+                    (0, Note {
+                        midi_note_diff: 0,
+                        strength: 0.5,
+                    }),
+                    (2, Note {
+                        midi_note_diff: 0,
+                        strength: 1.0,
+                    }),
+                    (4, Note {
+                        midi_note_diff: 0,
+                        strength: 0.5,
+                    }),
+                    (6, Note {
+                        midi_note_diff: 0,
+                        strength: 1.0,
+                    }),
+                    (8, Note {
+                        midi_note_diff: 0,
+                        strength: 0.5,
+                    }),
+                    (10, Note {
+                        midi_note_diff: 0,
+                        strength: 1.0,
+                    }),
+                    (12, Note {
+                        midi_note_diff: 0,
+                        strength: 0.5,
+                    }),
+                    (15, Note {
+                        midi_note_diff: 0,
+                        strength: 1.0,
+                    })
+                ]),
+            }), Box::new(Drummer {
+                name: "HiHat".to_string(),
+                sampler: Sampler {
+                    handle: asset_server.load("samples/drums/kit-d/80PD_KitD-ClHat.wav")
+                },
+                notes: HashMap::from((0..=15).step_by(2).map(|i| {
+                    let mut note_index = i + 2;
+                    if note_index > 15 {
+                        note_index = 1;
+                    }
+                    (note_index, Note {
+                        midi_note_diff: 0,
+                        strength: 0.5,
+                    })
+                }).collect::<HashMap<u32, Note>>()),
+            }),
+        ]
     }));
     // commands.spawn((
     //     Sample {

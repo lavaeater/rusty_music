@@ -14,10 +14,11 @@ pub fn play_sound_on_the_beat(
     //     *intensity = 0.0;
     // }
     for beat in beat_reader.read() {
-        if beat.bar % 2 == 0 {
-            *intensity = 0.3;
-        } else {
+        println!("beat: {:?}", beat);
+        if beat.bar % 4 == 0 {
             *intensity = 1.0;
+        } else {
+            *intensity = 0.5;
         }
         conductor.musicians.iter().for_each(|musician| {
            musician.signal(&audio, *beat, intensity.abs());

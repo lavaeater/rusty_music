@@ -159,8 +159,11 @@ pub struct Drummer {
 impl MusicPlayer for Drummer {
     fn signal(&self, audio: &Res<Audio>, beat: Beat, base_intensity: f32) {
         if let Some(note) = self.notes.get(&beat.beat) {
-            let minIntensity = 1.0 - base_intensity;
-            if note.strength >= minIntensity {
+            // let min_intensity = 1.0 - base_intensity;
+            /*
+
+             */
+            if note.strength <= base_intensity {
                 self.play(audio, beat, note.midi_note_diff);
             }
         }
