@@ -11,7 +11,7 @@ pub struct Drummer {
 }
 
 impl MusicPlayer for Drummer {
-    fn signal(&self, audio: &Res<Audio>, beat: Beat, base_intensity: f32, _chord: &Chord) {
+    fn signal(&mut self, audio: &Res<Audio>, beat: Beat, base_intensity: f32, _chord: &Chord) {
         if let Some(note) = self.notes.get(&beat.beat) {
             if note.strength <= base_intensity {
                 self.play(audio, beat, note.midi_note_diff, self.sampler.handle.clone_weak());

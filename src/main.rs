@@ -6,13 +6,14 @@ mod musicians;
 use bevy_kira_audio::AudioPlugin;
 use bevy::prelude::*;
 use bevy::utils::hashbrown::HashMap;
-use musicians::{Note, Sampler};
+use musicians::{Musician, Note, Sampler};
 use musicians::conductor::Conductor;
 use musicians::drummer::Drummer;
 use player::play_sound_on_the_beat;
 use crate::clock::{Beat, Clock, progress_clock_system};
-use crate::musicians::bassist::{Bassist, Musician};
+use crate::musicians::bassist::Bassist;
 use crate::musicians::Chord;
+use crate::musicians::soloist::Soloist;
 
 fn main() {
     let beats = 4;
@@ -39,6 +40,15 @@ fn setup(
 ) {
     commands.spawn(
         Musician::new(
+            "Melody".to_string(),
+            Soloist::new("Solo".to_string(),
+                         Sampler {
+                             handle: asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav")
+                         },
+            4,4, 2),
+        ));
+    commands.spawn(
+        Musician::new(
             "Bassist".to_string(),
             Bassist::new("Bass".to_string(),
                          Sampler {
@@ -54,40 +64,7 @@ fn setup(
                 sampler: Sampler {
                     handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav")
                 },
-                notes: HashMap::from([
-                    (0, Note {
-                        midi_note_diff: 0,
-                        strength: 0.5,
-                    }),
-                    (2, Note {
-                        midi_note_diff: 0,
-                        strength: 1.0,
-                    }),
-                    (4, Note {
-                        midi_note_diff: 0,
-                        strength: 0.5,
-                    }),
-                    (6, Note {
-                        midi_note_diff: 0,
-                        strength: 1.0,
-                    }),
-                    (8, Note {
-                        midi_note_diff: 0,
-                        strength: 0.5,
-                    }),
-                    (10, Note {
-                        midi_note_diff: 0,
-                        strength: 1.0,
-                    }),
-                    (12, Note {
-                        midi_note_diff: 0,
-                        strength: 0.5,
-                    }),
-                    (15, Note {
-                        midi_note_diff: 0,
-                        strength: 1.0,
-                    })
-                ]),
+                notes: generate_beat(),
             })
     );
 
@@ -109,15 +86,78 @@ fn setup(
     }));
 
     commands.insert_resource(Conductor {
-        chords: vec![
-            Chord::new(0, vec![
-                Note::new(0, 1.0),
-                Note::new(0, 0.5),
-            ], vec![]),
-            Chord::new(1, vec![
-                Note::new(-2, 1.0),
-                Note::new(1, 0.5),
-            ], vec![]),
-        ]
+        chords: generate_chords()
     });
+}
+
+pub fn generate_chords() -> Vec<Chord> {
+    let scale_notes = vec![
+        Note::new(-1, 1.0),
+        Note::new(1, 0.2),
+        Note::new(3, 0.6),
+        Note::new(4, 0.5),
+        Note::new(6, 0.7),
+        Note::new(8, 0.4),
+        Note::new(9, 0.1),
+    ];
+    vec![
+        Chord::new(0, vec![
+            Note::new(0, 1.0),
+            Note::new(0, 0.5),
+            Note::new(2, 0.2),
+        ], scale_notes.clone()),
+        Chord::new(1, vec![
+            Note::new(-2, 1.0),
+            Note::new(1, 0.5),
+            Note::new(3, 0.1),
+        ] , scale_notes.clone()),
+        Chord::new(2, vec![
+            Note::new(-1, 1.0),
+            Note::new(2, 0.7),
+            Note::new(-2, 0.4),
+        ], scale_notes.clone()),
+        Chord::new(3, vec![
+            Note::new(-2, 0.2),
+            Note::new(1, 0.5),
+            Note::new(-4, 1.0),
+        ], scale_notes.clone()),
+    ]
+}
+
+
+pub fn generate_beat() -> HashMap<u32, Note> {
+    HashMap::from([
+        (0, Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+        (2, Note {
+            midi_note_diff: 0,
+            strength: 1.0,
+        }),
+        (4, Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+        (6, Note {
+            midi_note_diff: 0,
+            strength: 1.0,
+        }),
+        (8, Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+        (10, Note {
+            midi_note_diff: 0,
+            strength: 1.0,
+        }),
+        (12, Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+        (15, Note {
+            midi_note_diff: 0,
+            strength: 1.0,
+        })
+    ])
 }

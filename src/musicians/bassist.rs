@@ -1,23 +1,8 @@
-use bevy::prelude::{Component, Res};
+use bevy::prelude::Res;
 use bevy_kira_audio::Audio;
 use crate::clock::Beat;
 use crate::musicians::{Chord, MusicPlayer, Note, Sampler};
 use rand::seq::IteratorRandom;
-
-#[derive(Component)]
-pub struct Musician {
-    pub name: String,
-    pub player: Box<dyn MusicPlayer>,
-}
-
-impl Musician {
-    pub fn new(name: String, player: impl MusicPlayer + 'static) -> Self {
-        Self {
-            name,
-            player: Box::new(player),
-        }
-    }
-}
 
 pub struct Bassist {
     pub name: String,
@@ -33,9 +18,8 @@ impl Bassist {
     }
 }
 
-
 impl MusicPlayer for Bassist {
-    fn signal(&self, audio: &Res<Audio>, beat: Beat, _base_intensity: f32, chord: &Chord) {
+    fn signal(&mut self, audio: &Res<Audio>, beat: Beat, _base_intensity: f32, chord: &Chord) {
         if beat.beat == 0 {
             let notes: Vec<&Note> = chord
                 .chord_notes
@@ -55,5 +39,16 @@ impl MusicPlayer for Bassist {
                 self.play(audio, beat, note.midi_note_diff, self.sampler.handle.clone_weak());
             }
         }
+
+        if beat.beat % 4 == 0 {
+            let notes: Vec<&Note> = chord
+                .chord_notes
+                .iter()
+                .filter(|n| n.strength >= 1.0).collect();
+            if let Some(note) = notes.iter().choose(&mut rand::thread_rng()) {
+                self.play(audio, beat, note.midi_note_diff, self.sampler.handle.clone_weak());
+            }
+        }
+
     }
 }

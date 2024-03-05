@@ -1,15 +1,16 @@
 pub(crate) mod drummer;
 pub(crate) mod conductor;
 pub(crate) mod bassist;
+pub(crate) mod soloist;
 
-use bevy::prelude::{Res};
+use bevy::prelude::{Component, Res};
 use bevy_kira_audio::{Audio, AudioControl, AudioSource};
 use bevy::asset::Handle;
 use crate::clock::Beat;
 use crate::musicians;
 
 pub trait MusicPlayer: Send + Sync {
-    fn signal(&self, audio: &Res<Audio>, beat: Beat, global_intensity: f32, chord: &Chord);
+    fn signal(&mut self, audio: &Res<Audio>, beat: Beat, global_intensity: f32, chord: &Chord);
     fn play(&self, audio: &Res<Audio>, _beat: Beat, midi_note_diff: i32, sampler: Handle<AudioSource>) {
         audio.play(sampler)
             .with_playback_rate(musicians::midi_diff_to_pitch(midi_note_diff));
@@ -46,7 +47,7 @@ pub struct Sampler {
 }
 
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Note {
     pub midi_note_diff: i32,
     pub strength: f32,
@@ -74,6 +75,21 @@ impl Chord {
             bar,
             chord_notes,
             scale_notes,
+        }
+    }
+}
+
+#[derive(Component)]
+pub struct Musician {
+    pub name: String,
+    pub player: Box<dyn MusicPlayer>,
+}
+
+impl Musician {
+    pub fn new(name: String, player: impl MusicPlayer + 'static) -> Self {
+        Self {
+            name,
+            player: Box::new(player),
         }
     }
 }
