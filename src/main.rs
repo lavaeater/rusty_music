@@ -47,17 +47,33 @@ fn setup(
             notes: HashMap::from([
                 (0, Note {
                     midi_note_diff: 0,
+                    strength: 0.5,
+                }),
+                (2, Note {
+                    midi_note_diff: 0,
                     strength: 1.0,
                 }),
                 (4, Note {
+                    midi_note_diff: 0,
+                    strength: 0.5,
+                }),
+                (6, Note {
                     midi_note_diff: 0,
                     strength: 1.0,
                 }),
                 (8, Note {
                     midi_note_diff: 0,
+                    strength: 0.5,
+                }),
+                (10, Note {
+                    midi_note_diff: 0,
                     strength: 1.0,
                 }),
                 (12, Note {
+                    midi_note_diff: 0,
+                    strength: 0.5,
+                }),
+                (15, Note {
                     midi_note_diff: 0,
                     strength: 1.0,
                 })
