@@ -1,6 +1,7 @@
-use bevy::prelude::{EventReader, Local, Res};
+use bevy::prelude::{EventReader, Local, Query, Res};
 use bevy_kira_audio::Audio;
 use crate::clock::Beat;
+use crate::musicians::bassist::Musician;
 use crate::musicians::conductor::Conductor;
 
 pub fn play_sound_on_the_beat(
@@ -8,11 +9,8 @@ pub fn play_sound_on_the_beat(
     audio: Res<Audio>,
     conductor: Res<Conductor>,
     mut intensity: Local<f32>,
+    instruments: Query<&Musician>
 ) {
-    // *intensity += 0.01;
-    // if *intensity >= 1.0 {
-    //     *intensity = 0.0;
-    // }
     for beat in beat_reader.read() {
         println!("beat: {:?}", beat);
         if beat.bar % 4 == 0 {
@@ -24,8 +22,8 @@ pub fn play_sound_on_the_beat(
         let chord_bar = beat.bar % conductor.chords.len() as u32;
         let chord = &conductor.chords[chord_bar as usize];
 
-        conductor.musicians.iter().for_each(|musician| {
+        for (musician) in instruments.iter() {
             musician.signal(&audio, *beat, intensity.abs(), chord);
-        });
+        }
     }
 }

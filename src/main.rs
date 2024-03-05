@@ -11,7 +11,7 @@ use musicians::conductor::Conductor;
 use musicians::drummer::Drummer;
 use player::play_sound_on_the_beat;
 use crate::clock::{Beat, Clock, progress_clock_system};
-use crate::musicians::bassist::Bassist;
+use crate::musicians::bassist::{Bassist, Musician};
 use crate::musicians::Chord;
 
 fn main() {
@@ -37,20 +37,21 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
+    commands.spawn(
+        Musician::new(
+            "Bassist".to_string(),
+            Bassist {
+                name: "Bass".to_string(),
+                sampler: Sampler {
+                    handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav")
+                },
+            })
+    );
 
-    commands.insert_resource((Conductor {
-        chords: vec![
-            Chord::new(0, vec![
-                Note::new(0, 1.0),
-                Note::new(0, 0.5),
-            ], vec![]),
-            Chord::new(1, vec![
-                Note::new(-2, 1.0),
-                Note::new(1, 0.5),
-            ], vec![])
-        ],
-        musicians: vec![
-            Box::new(Drummer {
+    commands.spawn(
+        Musician::new(
+            "Drummer".to_string(),
+            Drummer {
                 name: "Kick".to_string(),
                 sampler: Sampler {
                     handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav")
@@ -89,51 +90,36 @@ fn setup(
                         strength: 1.0,
                     })
                 ]),
-            }), Box::new(Drummer {
-                name: "HiHat".to_string(),
-                sampler: Sampler {
-                    handle: asset_server.load("samples/drums/kit-d/80PD_KitD-ClHat.wav")
-                },
-                notes: HashMap::from((0..=15).step_by(2).map(|i| {
-                    let mut note_index = i + 2;
-                    if note_index > 15 {
-                        note_index = 1;
-                    }
-                    (note_index, Note {
-                        midi_note_diff: 0,
-                        strength: 0.5,
-                    })
-                }).collect::<HashMap<u32, Note>>()),
-            }),
-            Box::new(Bassist {
-                name: "Bass".to_string(),
-                sampler: Sampler {
-                    handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav")
-                },
-            }),
+            })
+    );
+
+    commands.spawn(Musician::new("Hihat".to_string(), Drummer {
+        name: "HiHat".to_string(),
+        sampler: Sampler {
+            handle: asset_server.load("samples/drums/kit-d/80PD_KitD-ClHat.wav")
+        },
+        notes: HashMap::from((0..=15).step_by(2).map(|i| {
+            let mut note_index = i + 2;
+            if note_index > 15 {
+                note_index = 1;
+            }
+            (note_index, Note {
+                midi_note_diff: 0,
+                strength: 0.5,
+            })
+        }).collect::<HashMap<u32, Note>>()),
+    }));
+
+    commands.insert_resource((Conductor {
+        chords: vec![
+            Chord::new(0, vec![
+                Note::new(0, 1.0),
+                Note::new(0, 0.5),
+            ], vec![]),
+            Chord::new(1, vec![
+                Note::new(-2, 1.0),
+                Note::new(1, 0.5),
+            ], vec![]),
         ]
     }));
-    // commands.spawn((
-    //     Sample {
-    //         play_on_every_n_beats: 4,
-    //         play_at_offset: 0,
-    //         handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav")
-    //     },)
-    // );
-    //
-    // commands.spawn((
-    //     Sample {
-    //         play_on_every_n_beats: 1,
-    //         play_at_offset: 2,
-    //         handle: asset_server.load("samples/drums/kit-d/80PD_KitD-ClHat.wav")
-    //     },)
-    // );
-    //
-    // commands.spawn((
-    //     Sample {
-    //         play_on_every_n_beats: 2,
-    //         play_at_offset: 2,
-    //         handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Tom[Mid].wav")
-    //     },)
-    // );
 }

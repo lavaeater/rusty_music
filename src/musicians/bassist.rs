@@ -1,5 +1,5 @@
 use bevy::utils::HashMap;
-use bevy::prelude::{Handle, Res};
+use bevy::prelude::{Component, Handle, Res};
 use bevy::utils::petgraph::visit::Walker;
 use bevy_kira_audio::{Audio, AudioControl, AudioSource};
 use crate::clock::Beat;
@@ -7,6 +7,20 @@ use crate::musicians;
 use crate::musicians::{Chord, MusicPlayer, Note, Sampler};
 use rand::seq::IteratorRandom;
 
+#[derive(Debug, Component)]
+pub struct Musician {
+    pub name: String,
+    pub player: Musician,
+}
+
+impl Musician {
+    pub fn new(name: String, player: impl MusicPlayer) -> Self {
+        Self {
+            name,
+            player,
+        }
+    }
+}
 
 pub struct Bassist {
     pub name: String,
