@@ -22,8 +22,8 @@ pub fn play_sound_on_the_beat(
         let chord_bar = beat.bar % conductor.chords.len() as u32;
         let chord = &conductor.chords[chord_bar as usize];
 
-        for (musician) in instruments.iter() {
-            musician.signal(&audio, *beat, intensity.abs(), chord);
+        for musician in instruments.iter() {
+            musician.player.signal(&audio, *beat, intensity.abs(), chord);
         }
     }
 }

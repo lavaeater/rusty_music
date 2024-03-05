@@ -1,23 +1,20 @@
-use bevy::utils::HashMap;
-use bevy::prelude::{Component, Handle, Res};
-use bevy::utils::petgraph::visit::Walker;
-use bevy_kira_audio::{Audio, AudioControl, AudioSource};
+use bevy::prelude::{Component, Res};
+use bevy_kira_audio::Audio;
 use crate::clock::Beat;
-use crate::musicians;
 use crate::musicians::{Chord, MusicPlayer, Note, Sampler};
 use rand::seq::IteratorRandom;
 
-#[derive(Debug, Component)]
+#[derive(Component)]
 pub struct Musician {
     pub name: String,
-    pub player: Musician,
+    pub player: Box<dyn MusicPlayer>,
 }
 
 impl Musician {
-    pub fn new(name: String, player: impl MusicPlayer) -> Self {
+    pub fn new(name: String, player: impl MusicPlayer + 'static) -> Self {
         Self {
             name,
-            player,
+            player: Box::new(player),
         }
     }
 }
@@ -38,7 +35,7 @@ impl Bassist {
 
 
 impl MusicPlayer for Bassist {
-    fn signal(&self, audio: &Res<Audio>, beat: Beat, base_intensity: f32, chord: &Chord) {
+    fn signal(&self, audio: &Res<Audio>, beat: Beat, _base_intensity: f32, chord: &Chord) {
         if beat.beat == 0 {
             let notes: Vec<&Note> = chord
                 .chord_notes

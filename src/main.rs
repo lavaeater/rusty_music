@@ -40,13 +40,11 @@ fn setup(
     commands.spawn(
         Musician::new(
             "Bassist".to_string(),
-            Bassist {
-                name: "Bass".to_string(),
-                sampler: Sampler {
-                    handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav")
-                },
-            })
-    );
+            Bassist::new("Bass".to_string(),
+                         Sampler {
+                             handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav")
+                         }),
+        ));
 
     commands.spawn(
         Musician::new(
@@ -110,7 +108,7 @@ fn setup(
         }).collect::<HashMap<u32, Note>>()),
     }));
 
-    commands.insert_resource((Conductor {
+    commands.insert_resource(Conductor {
         chords: vec![
             Chord::new(0, vec![
                 Note::new(0, 1.0),
@@ -121,5 +119,5 @@ fn setup(
                 Note::new(1, 0.5),
             ], vec![]),
         ]
-    }));
+    });
 }

@@ -1,5 +1,5 @@
 use bevy::prelude::Resource;
-use crate::musicians::{Chord, MusicPlayer};
+use crate::musicians::{Chord};
 
 #[derive(Resource)]
 pub struct Conductor {
