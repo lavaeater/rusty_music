@@ -3,21 +3,19 @@ pub(crate) mod conductor;
 pub(crate) mod bassist;
 pub(crate) mod soloist;
 
-use bevy::prelude::{Component, Res};
-use bevy_kira_audio::{Audio, AudioControl, AudioSource};
+use bevy::prelude::{Component};
+use bevy_kira_audio::{AudioSource};
 use bevy::asset::Handle;
 use crate::clock::Beat;
-use crate::musicians;
 
 pub trait MusicPlayer: Send + Sync {
     fn get_note(&mut self, beat: Beat, base_intensity: f32, chord: &Chord) -> Option<Note>;
 }
 
-
 pub struct Sampler {
     pub handle: Handle<AudioSource>,
+    pub volume: f64,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Note {
@@ -51,19 +49,27 @@ impl Chord {
     }
 }
 
+pub enum MusicianType {
+    Drums,
+    Bass,
+    Solo,
+}
+
 #[derive(Component)]
 pub struct Musician {
     pub name: String,
     pub sampler: Sampler,
     pub player: Box<dyn MusicPlayer>,
+    pub musician_type: MusicianType,
 }
 
 impl Musician {
-    pub fn new(name: String, sampler: Sampler, player: impl MusicPlayer + 'static) -> Self {
+    pub fn new(name: String, sampler: Sampler, player: impl MusicPlayer + 'static, musician_type: MusicianType) -> Self {
         Self {
             name,
             sampler,
             player: Box::new(player),
+            musician_type,
         }
     }
 }
