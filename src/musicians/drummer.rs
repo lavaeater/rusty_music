@@ -10,7 +10,7 @@ pub struct Drummer {
 impl MusicPlayer for Drummer {
     fn get_note(&mut self, beat: Beat, base_intensity: f32, _chord: &Chord) -> Option<Note> {
         if let Some(note) = self.notes.get(&beat.beat) {
-            return if note.strength >= base_intensity {
+            return if note.strength <= base_intensity {
                 Some(*note)
             } else {
                 None

@@ -14,6 +14,7 @@ use crate::clock::{Beat, Clock, progress_clock_system};
 use crate::musicians::bassist::Bassist;
 use crate::musicians::{Chord, MusicianType};
 use crate::musicians::soloist::Soloist;
+use crate::player::Intensity;
 
 #[derive(Resource)]
 pub struct Soloists;
@@ -30,6 +31,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(AudioPlugin)
         .insert_resource(Clock::new(beats, note_type, bpm))
+        .insert_resource(Intensity(0.5))
         // .add_systems(FixedUpdate, progress_clock_system)
         // configure our fixed timestep schedule to run twice a second
         // .insert_resource(Time::<Fixed>::from_seconds((60.0 / bpm as f64 / beats as f64) / (beats as f64 / beats as f64)))
@@ -160,6 +162,10 @@ pub fn generate_kick_beat() -> HashMap<u32, Note> {
             strength: 0.5,
         }),
         (12, Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+        (14, Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
