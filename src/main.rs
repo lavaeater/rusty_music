@@ -41,49 +41,50 @@ fn setup(
     commands.spawn(
         Musician::new(
             "Melody".to_string(),
-            Soloist::new("Solo".to_string(),
-                         Sampler {
-                             handle: asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav")
-                         },
-            4,4, 2),
+            Sampler {
+                handle: asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav")
+            },
+            Soloist::new("Solo".to_string(), 4, 4, 2),
         ));
     commands.spawn(
         Musician::new(
             "Bassist".to_string(),
-            Bassist::new("Bass".to_string(),
-                         Sampler {
-                             handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav")
-                         }),
+            Sampler {
+                handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav")
+            },
+            Bassist::new("Bass".to_string()),
         ));
 
     commands.spawn(
         Musician::new(
             "Drummer".to_string(),
+            Sampler {
+                handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav")
+            },
             Drummer {
                 name: "Kick".to_string(),
-                sampler: Sampler {
-                    handle: asset_server.load("samples/drums/kit-d/80PD_KitD-Kick.wav")
-                },
                 notes: generate_beat(),
             })
     );
 
-    commands.spawn(Musician::new("Hihat".to_string(), Drummer {
-        name: "HiHat".to_string(),
-        sampler: Sampler {
+    commands.spawn(Musician::new(
+        "Hihat".to_string(),
+        Sampler {
             handle: asset_server.load("samples/drums/kit-d/80PD_KitD-ClHat.wav")
         },
-        notes: HashMap::from((0..=15).step_by(2).map(|i| {
-            let mut note_index = i + 2;
-            if note_index > 15 {
-                note_index = 1;
-            }
-            (note_index, Note {
-                midi_note_diff: 0,
-                strength: 0.5,
-            })
-        }).collect::<HashMap<u32, Note>>()),
-    }));
+        Drummer {
+            name: "HiHat".to_string(),
+            notes: HashMap::from((0..=15).step_by(2).map(|i| {
+                let mut note_index = i + 2;
+                if note_index > 15 {
+                    note_index = 1;
+                }
+                (note_index, Note {
+                    midi_note_diff: 0,
+                    strength: 0.5,
+                })
+            }).collect::<HashMap<u32, Note>>()),
+        }));
 
     commands.insert_resource(Conductor {
         chords: generate_chords()
@@ -110,7 +111,7 @@ pub fn generate_chords() -> Vec<Chord> {
             Note::new(-2, 1.0),
             Note::new(1, 0.5),
             Note::new(3, 0.1),
-        ] , scale_notes.clone()),
+        ], scale_notes.clone()),
         Chord::new(2, vec![
             Note::new(-1, 1.0),
             Note::new(2, 0.7),

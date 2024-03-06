@@ -1,8 +1,34 @@
 use bevy::prelude::{EventReader, Local, Query, Res};
-use bevy_kira_audio::Audio;
+use bevy_kira_audio::{Audio, AudioControl};
 use crate::clock::Beat;
 use crate::musicians::Musician;
 use crate::musicians::conductor::Conductor;
+
+
+fn midi_diff_to_pitch_what(midi_diff: i32) -> f64 {
+    let f = 2.0f64.powf(midi_diff as f64 / 12.0);
+    f
+}
+fn midi_diff_to_pitch(midi_diff: i32) -> f64 {
+    let min_pitch = -12;
+    let max_pitch = 12;
+    if midi_diff < 0 {
+        if midi_diff < min_pitch {
+            0.5
+        } else {
+            midi_diff_to_pitch_what(midi_diff)
+        }
+    } else if midi_diff > 0 {
+        if midi_diff > max_pitch {
+            2.0
+        } else {
+            midi_diff_to_pitch_what(midi_diff)
+        }
+    } else {
+        1.0
+    }
+}
+
 
 pub fn play_sound_on_the_beat(
     mut beat_reader: EventReader<Beat>,
@@ -27,7 +53,10 @@ pub fn play_sound_on_the_beat(
         let chord = &conductor.chords[chord_bar as usize];
 
         for mut musician in instruments.iter_mut() {
-            musician.player.signal(&audio, *beat, intensity.abs(), chord);
+            if let Some(note) = musician.player.get_note(*beat, *intensity, chord) {
+                audio.play(musician.sampler.handle.clone_weak())
+                    .with_playback_rate(midi_diff_to_pitch(note.midi_note_diff));
+            }
         }
     }
 }

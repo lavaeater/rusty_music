@@ -6,49 +6,46 @@ use rand::seq::IteratorRandom;
 
 pub struct Bassist {
     pub name: String,
-    pub sampler: Sampler,
 }
 
 impl Bassist {
-    pub fn new(name: String, sampler: Sampler) -> Self {
+    pub fn new(name: String) -> Self {
         Self {
             name,
-            sampler,
         }
     }
 }
 
 impl MusicPlayer for Bassist {
-    fn signal(&mut self, audio: &Res<Audio>, beat: Beat, _base_intensity: f32, chord: &Chord) {
-        if beat.beat == 0 {
-            let notes: Vec<&Note> = chord
+    fn get_note(&mut self, beat: Beat, base_intensity: f32, chord: &Chord) -> Option<Note> {
+        return if beat.beat == 0 {
+            chord
                 .chord_notes
                 .iter()
-                .filter(|n| n.strength >= 1.0).collect();
-            if let Some(note) = notes.iter().choose(&mut rand::thread_rng()) {
-                self.play(audio, beat, note.midi_note_diff, self.sampler.handle.clone_weak());
-            }
-        }
-
-        if beat.beat % 2 == 0 {
-            let notes: Vec<&Note> = chord
+                .filter(|n| n.strength >= 1.0)
+                .collect::<Vec<&Note>>()
+                .iter()
+                .choose(&mut rand::thread_rng()).copied().copied()
+        } else if beat.beat % 2 == 0 {
+            chord
                 .chord_notes
                 .iter()
-                .filter(|n| n.strength >= 1.0).collect();
-            if let Some(note) = notes.iter().choose(&mut rand::thread_rng()) {
-                self.play(audio, beat, note.midi_note_diff, self.sampler.handle.clone_weak());
-            }
-        }
-
-        if beat.beat % 4 == 0 {
-            let notes: Vec<&Note> = chord
+                .filter(|n| n.strength <= 0.5)
+                .collect::<Vec<&Note>>()
+                .iter()
+                .choose(&mut rand::thread_rng()).copied().copied()
+        } else if beat.beat % 4 == 0 {
+            chord
                 .chord_notes
                 .iter()
-                .filter(|n| n.strength >= 1.0).collect();
-            if let Some(note) = notes.iter().choose(&mut rand::thread_rng()) {
-                self.play(audio, beat, note.midi_note_diff, self.sampler.handle.clone_weak());
-            }
+                .filter(|n| n.strength <= 0.25)
+                .collect::<Vec<&Note>>()
+                .iter()
+                .choose(&mut rand::thread_rng())
+                .copied()
+                .copied() // Nice.
+        } else {
+            None
         }
-
     }
 }
