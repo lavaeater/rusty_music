@@ -1,13 +1,12 @@
 #![allow(clippy::precedence)]
 
-use bevy::utils::HashMap;
 use {bevy::prelude::*, bevy_fundsp::prelude::*, bevy_kira_audio::prelude::*};
-use rusty_music::musicians::{Chord, Musician, MusicianType, Note, Sampler};
+use rusty_music::musicians::{Musician, MusicianType, Sampler};
 use rusty_music::musicians::bassist::Bassist;
 use rusty_music::musicians::conductor::Conductor;
-use rusty_music::musicians::drummer::Drummer;
+use rusty_music::musicians::drummer::{Drummer, generate_hihat_beat, generate_kick_beat, generate_snare_beat};
 use rusty_music::musicians::soloist::Soloist;
-use rusty_music::MusicPlugin;
+use rusty_music::{generate_chords, MusicPlugin};
 use rusty_music::player::Intensity;
 
 fn main() {
@@ -182,92 +181,4 @@ fn setup(
     commands.insert_resource(Conductor {
         chords: generate_chords()
     });
-}
-
-pub fn generate_chords() -> Vec<Chord> {
-    let scale_notes = vec![
-        Note::new(-1, 1.0),
-        Note::new(1, 0.2),
-        Note::new(3, 0.6),
-        Note::new(4, 0.5),
-        Note::new(6, 0.7),
-        Note::new(8, 0.4),
-        Note::new(9, 0.1),
-    ];
-    vec![
-        Chord::new(0, vec![
-            Note::new(0, 1.0),
-            Note::new(0, 0.5),
-            Note::new(2, 0.2),
-        ], scale_notes.clone()),
-        Chord::new(1, vec![
-            Note::new(-2, 1.0),
-            Note::new(1, 0.5),
-            Note::new(3, 0.1),
-        ], scale_notes.clone()),
-        Chord::new(2, vec![
-            Note::new(-1, 1.0),
-            Note::new(2, 0.7),
-            Note::new(-2, 0.4),
-        ], scale_notes.clone()),
-        Chord::new(3, vec![
-            Note::new(-2, 0.2),
-            Note::new(1, 0.5),
-            Note::new(-4, 1.0),
-        ], scale_notes.clone()),
-    ]
-}
-
-
-pub fn generate_kick_beat() -> HashMap<(u32, u32), Note> {
-    // 0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3
-    // 0       1       2       3
-    HashMap::from([
-        ((1, 0), Note {
-            midi_note_diff: 0,
-            strength: 0.25,
-        }),
-        ((3, 0), Note {
-            midi_note_diff: 0,
-            strength: 0.5,
-        }),
-        ((3, 2), Note {
-            midi_note_diff: 0,
-            strength: 0.7,
-        }),
-    ])
-}
-
-pub fn generate_snare_beat() -> HashMap<(u32, u32), Note> {
-    HashMap::from([
-        ((0, 0), Note {
-            midi_note_diff: 0,
-            strength: 0.5,
-        }),
-        ((2, 0), Note {
-            midi_note_diff: 0,
-            strength: 0.5,
-        })
-    ])
-}
-
-pub fn generate_hihat_beat() -> HashMap<(u32, u32), Note> {
-    HashMap::from([
-        ((0, 0), Note {
-            midi_note_diff: 0,
-            strength: 0.5,
-        }),
-        ((1, 0), Note {
-            midi_note_diff: 0,
-            strength: 0.5,
-        }),
-        ((2, 0), Note {
-            midi_note_diff: 0,
-            strength: 0.5,
-        }),
-        ((3, 0), Note {
-            midi_note_diff: 0,
-            strength: 0.5,
-        }),
-    ])
 }

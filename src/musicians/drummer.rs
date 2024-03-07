@@ -19,3 +19,56 @@ impl MusicPlayer for Drummer {
         None
     }
 }
+
+pub fn generate_kick_beat() -> HashMap<(u32, u32), Note> {
+    // 0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3
+    // 0       1       2       3
+    HashMap::from([
+        ((1, 0), Note {
+            midi_note_diff: 0,
+            strength: 0.25,
+        }),
+        ((3, 0), Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+        ((3, 2), Note {
+            midi_note_diff: 0,
+            strength: 0.7,
+        }),
+    ])
+}
+
+pub fn generate_snare_beat() -> HashMap<(u32, u32), Note> {
+    HashMap::from([
+        ((0, 0), Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+        ((2, 0), Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        })
+    ])
+}
+
+pub fn generate_hihat_beat() -> HashMap<(u32, u32), Note> {
+    HashMap::from([
+        ((0, 0), Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+        ((1, 0), Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+        ((2, 0), Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+        ((3, 0), Note {
+            midi_note_diff: 0,
+            strength: 0.5,
+        }),
+    ])
+}
