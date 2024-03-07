@@ -2,6 +2,13 @@
 name = "rusty_music"
 version = "0.1.0"
 edition = "2021"
+authors = ["Tommie Nygren"]
+description = "A Bevy plugin that integrates FunDSP into Bevy."
+homepage = "https://github.com/lavaeater/rusty_music"
+repository = "https://github.com/lavaeater/rusty_music"
+license = "MIT OR Apache-2.0"
+keywords = ["bevy", "audio", "gamedev"]
+categories = ["game-development", "multimedia::audio"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -34,3 +41,7 @@ rand = "0.8.5"
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[[example]]
+name = "simple"
+path = "examples/simple.rs"

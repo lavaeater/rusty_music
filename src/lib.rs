@@ -1,9 +1,13 @@
-use bevy::app::Update;
-use bevy::prelude::{App, Plugin};
+use bevy::app::{App, Plugin, Update};
 use bevy_kira_audio::{AudioApp, AudioPlugin};
 use crate::clock::{Beat, Clock, progress_clock_system};
+use crate::musicians::{Bass, Drums, Soloists};
 use crate::player::{Intensity, play_sound_on_the_beat};
-use crate::{Bass, Drums, Soloists};
+
+pub mod clock;
+pub mod player;
+pub mod conductor;
+pub mod musicians;
 
 pub struct MusicPlugin {
     pub beats: u32,
@@ -24,7 +28,7 @@ impl Default for MusicPlugin {
 impl Plugin for MusicPlugin {
     fn build(&self, app: &mut App) {
         app
-        .add_plugins(AudioPlugin)
+            .add_plugins(AudioPlugin)
             .insert_resource(Clock::new(self.beats, self.note_type, self.bpm))
             .insert_resource(Intensity(0.5))
             .add_audio_channel::<Soloists>()

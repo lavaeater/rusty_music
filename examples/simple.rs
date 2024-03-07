@@ -1,28 +1,13 @@
-pub mod clock;
-pub mod player;
-pub mod conductor;
-pub mod musicians;
-pub mod music_plugin;
-
-use bevy::prelude::*;
-use bevy::utils::hashbrown::HashMap;
-use musicians::{Musician, Note, Sampler};
-use musicians::conductor::Conductor;
-use musicians::drummer::Drummer;
-use crate::music_plugin::MusicPlugin;
-use crate::musicians::bassist::Bassist;
-use crate::musicians::{Chord, MusicianType};
-use crate::musicians::soloist::Soloist;
-use crate::player::Intensity;
-
-#[derive(Resource)]
-pub struct Soloists;
-
-#[derive(Resource)]
-pub struct Drums;
-
-#[derive(Resource)]
-pub struct Bass;
+use bevy::DefaultPlugins;
+use bevy::prelude::{App, AssetServer, ButtonInput, Commands, KeyCode, Res, ResMut, Startup, Update};
+use bevy::utils::HashMap;
+use rusty_music::musicians::{Chord, Musician, MusicianType, Note, Sampler};
+use rusty_music::musicians::bassist::Bassist;
+use rusty_music::musicians::conductor::Conductor;
+use rusty_music::musicians::drummer::Drummer;
+use rusty_music::musicians::soloist::Soloist;
+use rusty_music::MusicPlugin;
+use rusty_music::player::Intensity;
 
 fn main() {
     App::new()
@@ -43,9 +28,11 @@ fn change_intensity(
 ) {
     if keyboard_input.just_pressed(KeyCode::ArrowUp) {
         intensity.0 += 0.1;
+        println!("Intensity: {}", intensity.0);
     }
     if keyboard_input.just_pressed(KeyCode::ArrowDown) {
         intensity.0 -= 0.1;
+        println!("Intensity: {}", intensity.0);
     }
     if intensity.0 > 1.0 {
         intensity.0 = 0.0;
@@ -168,7 +155,7 @@ pub fn generate_kick_beat() -> HashMap<(u32, u32), Note> {
     HashMap::from([
         ((1, 0), Note {
             midi_note_diff: 0,
-            strength: 0.5,
+            strength: 0.25,
         }),
         ((3, 0), Note {
             midi_note_diff: 0,
@@ -176,7 +163,7 @@ pub fn generate_kick_beat() -> HashMap<(u32, u32), Note> {
         }),
         ((3, 2), Note {
             midi_note_diff: 0,
-            strength: 0.5,
+            strength: 0.7,
         }),
     ])
 }

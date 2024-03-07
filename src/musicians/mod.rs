@@ -1,12 +1,21 @@
-pub(crate) mod drummer;
-pub(crate) mod conductor;
-pub(crate) mod bassist;
-pub(crate) mod soloist;
+pub mod drummer;
+pub mod conductor;
+pub mod bassist;
+pub mod soloist;
 
-use bevy::prelude::{Component};
+use bevy::prelude::{Component, Resource};
 use bevy_kira_audio::{AudioSource};
 use bevy::asset::Handle;
 use crate::clock::Beat;
+
+#[derive(Resource)]
+pub struct Soloists;
+
+#[derive(Resource)]
+pub struct Drums;
+
+#[derive(Resource)]
+pub struct Bass;
 
 pub trait MusicPlayer: Send + Sync {
     fn get_note(&mut self, beat: Beat, base_intensity: f32, chord: &Chord) -> Option<Note>;
