@@ -36,9 +36,14 @@ bevy = { version = "0.13", default-features = false, features = [
     "webgl2",
     "bevy_debug_stepping",
 ] }
-bevy_kira_audio = { version = "0.19" , features = ["wav"]}
+bevy_kira_audio = { version = "0.19" , features = ["wav"], optional = true}
 rand = "0.8.5"
-bevy_fundsp = { git = "https://github.com/lavaeater/bevy_fundsp.git", branch = "bevy-0.13", default-features = false, features = ["kira"] }
+bevy_fundsp = { git = "https://github.com/lavaeater/bevy_fundsp.git", branch = "bevy-0.13", default-features = false, features = ["kira"], optional = true }
+
+[features]
+default = ["kira"]
+kira = ["bevy_kira_audio"]
+fundsp = ["kira", "bevy_fundsp"]
 
 [profile.dev.package."*"]
 opt-level = 3
@@ -50,3 +55,6 @@ path = "examples/simple.rs"
 [[example]]
 name = "dsp"
 path = "examples/dsp.rs"
+required-features = ["fundsp"]
+
+
