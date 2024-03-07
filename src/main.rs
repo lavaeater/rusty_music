@@ -13,6 +13,7 @@ use crate::music_plugin::MusicPlugin;
 use crate::musicians::bassist::Bassist;
 use crate::musicians::{Chord, MusicianType};
 use crate::musicians::soloist::Soloist;
+use crate::player::Intensity;
 
 #[derive(Resource)]
 pub struct Soloists;
@@ -26,9 +27,32 @@ pub struct Bass;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(MusicPlugin::default())
+        .add_plugins(MusicPlugin {
+            beats: 4,
+            note_type: 4,
+            bpm: 120.0,
+        })
+        .add_systems(Update, change_intensity)
         .add_systems(Startup, setup)
         .run();
+}
+
+fn change_intensity(
+    mut intensity: ResMut<Intensity>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::ArrowUp) {
+        intensity.0 += 0.1;
+    }
+    if keyboard_input.just_pressed(KeyCode::ArrowDown) {
+        intensity.0 -= 0.1;
+    }
+    if intensity.0 > 1.0 {
+        intensity.0 = 0.0;
+    }
+    if intensity.0 < 0.0 {
+        intensity.0 = 1.0;
+    }
 }
 
 fn setup(

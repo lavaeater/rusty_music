@@ -51,9 +51,6 @@ pub fn play_sound_on_the_beat(
     mut instruments: Query<&mut Musician>,
 ) {
     for beat in beat_reader.read() {
-        println!("beat: {:?}, intensity: {:?}", beat, intensity);
-
-
         let chord_bar = beat.bar % conductor.chords.len() as u32;
         let chord = &conductor.chords[chord_bar as usize];
 
