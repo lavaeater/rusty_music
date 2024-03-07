@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use bevy::prelude::{EventReader, Query, Res, ResMut, Resource};
+use bevy::prelude::{EventReader, Query, Res, Resource};
 use bevy_kira_audio::{AudioChannel, AudioControl};
 use bevy_kira_audio::prelude::Volume;
 use crate::clock::Beat;

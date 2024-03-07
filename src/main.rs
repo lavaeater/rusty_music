@@ -1,45 +1,33 @@
-mod clock;
-mod player;
-mod conductor;
-mod musicians;
+pub mod clock;
+pub mod player;
+pub mod conductor;
+pub mod musicians;
+pub mod music_plugin;
 
-use bevy_kira_audio::{AudioApp, AudioPlugin};
 use bevy::prelude::*;
 use bevy::utils::hashbrown::HashMap;
 use musicians::{Musician, Note, Sampler};
 use musicians::conductor::Conductor;
 use musicians::drummer::Drummer;
-use player::play_sound_on_the_beat;
-use crate::clock::{Beat, Clock, progress_clock_system};
+use crate::music_plugin::MusicPlugin;
 use crate::musicians::bassist::Bassist;
 use crate::musicians::{Chord, MusicianType};
 use crate::musicians::soloist::Soloist;
-use crate::player::Intensity;
 
 #[derive(Resource)]
 pub struct Soloists;
+
 #[derive(Resource)]
 pub struct Drums;
+
 #[derive(Resource)]
 pub struct Bass;
 
 fn main() {
-    let beats = 4;
-    let note_type = 4;
-    let bpm = 80.0;
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(AudioPlugin)
-        .insert_resource(Clock::new(beats, note_type, bpm))
-        .insert_resource(Intensity(0.5))
-        .add_audio_channel::<Soloists>()
-        .add_audio_channel::<Drums>()
-        .add_audio_channel::<Bass>()
-        .add_event::<Beat>()
+        .add_plugins(MusicPlugin::default())
         .add_systems(Startup, setup)
-        .add_systems(Update, (
-            progress_clock_system,
-            play_sound_on_the_beat))
         .run();
 }
 
@@ -47,25 +35,25 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
-    // commands.spawn(
-    //     Musician::new(
-    //         "Melody".to_string(),
-    //         Sampler {
-    //             handle: asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
-    //             volume: 0.251188643150958,
-    //         },
-    //         Soloist::new("Solo".to_string(), 4, 4, 2),
-    //         MusicianType::Solo
-    //     ));
+    commands.spawn(
+        Musician::new(
+            "Melody".to_string(),
+            Sampler {
+                handle: asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
+                volume: 0.251188643150958,
+            },
+            Soloist::new("Solo".to_string(), 4, 4, 2),
+            MusicianType::Solo,
+        ));
     commands.spawn(
         Musician::new(
             "Bassist".to_string(),
             Sampler {
                 handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav"),
-                volume: 0.7
+                volume: 0.7,
             },
             Bassist::new("Bass".to_string()),
-            MusicianType::Bass
+            MusicianType::Bass,
         ));
 
     commands.spawn(
@@ -79,7 +67,7 @@ fn setup(
                 name: "Kick".to_string(),
                 notes: generate_kick_beat(),
             },
-            MusicianType::Drums
+            MusicianType::Drums,
         )
     );
     commands.spawn(
@@ -93,7 +81,7 @@ fn setup(
                 name: "Kick".to_string(),
                 notes: generate_snare_beat(),
             },
-            MusicianType::Drums
+            MusicianType::Drums,
         )
     );
 
@@ -101,13 +89,13 @@ fn setup(
         "Hihat".to_string(),
         Sampler {
             handle: asset_server.load("samples/drums/kit-d/hihat.wav"),
-            volume: 1.0
+            volume: 1.0,
         },
         Drummer {
             name: "HiHat".to_string(),
             notes: generate_hihat_beat(),
         },
-        MusicianType::Drums
+        MusicianType::Drums,
     ));
 
     commands.insert_resource(Conductor {
@@ -154,7 +142,7 @@ pub fn generate_kick_beat() -> HashMap<(u32, u32), Note> {
     // 0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3
     // 0       1       2       3
     HashMap::from([
-        ((1,0), Note {
+        ((1, 0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
@@ -162,7 +150,7 @@ pub fn generate_kick_beat() -> HashMap<(u32, u32), Note> {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        ((3,2), Note {
+        ((3, 2), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
@@ -171,11 +159,11 @@ pub fn generate_kick_beat() -> HashMap<(u32, u32), Note> {
 
 pub fn generate_snare_beat() -> HashMap<(u32, u32), Note> {
     HashMap::from([
-        ((0,0), Note {
+        ((0, 0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        ((2,0), Note {
+        ((2, 0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         })
@@ -184,21 +172,21 @@ pub fn generate_snare_beat() -> HashMap<(u32, u32), Note> {
 
 pub fn generate_hihat_beat() -> HashMap<(u32, u32), Note> {
     HashMap::from([
-        ((0,0), Note {
+        ((0, 0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        ((1,0), Note {
+        ((1, 0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        ((2,0), Note {
+        ((2, 0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        ((3,0), Note {
+        ((3, 0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        ])
+    ])
 }
