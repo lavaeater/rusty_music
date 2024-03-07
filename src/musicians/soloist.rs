@@ -26,7 +26,7 @@ impl Soloist {
 
 impl MusicPlayer for Soloist {
     fn get_note(&mut self, beat: Beat, _base_intensity: f32, chord: &Chord) -> Option<Note> {
-        let recording_index = beat.beat + beat.bar % self.record_bars * self.beats_per_bar;
+        let recording_index = beat.sixteenth + beat.bar % self.record_bars * self.beats_per_bar;
         let repeat_end_bars = self.repeat_bar + (self.repeats * self.record_bars) as i32;
 
         return if (beat.bar as i32 ) < repeat_end_bars  {
@@ -36,11 +36,11 @@ impl MusicPlayer for Soloist {
             // if self.recorded_melody.len() > (self.record_bars * self.beats_per_bar) as usize {
             //     self.recorded_melody.clear();
             // }
-            let note = if beat.beat == 0 {
+            let note = if beat.sixteenth == 0 {
                 chord.scale_notes.iter().filter(|n| n.strength >= 1.0).choose(&mut rand::thread_rng()).unwrap()
-            } else if beat.beat % self.beats_per_bar == 0 {
+            } else if beat.sixteenth % self.beats_per_bar == 0 {
                 chord.scale_notes.iter().filter(|n| n.strength >= 0.5).choose(&mut rand::thread_rng()).unwrap()
-            } else if beat.beat & self.beats_per_bar / 2 == 0 {
+            } else if beat.sixteenth & self.beats_per_bar / 2 == 0 {
                 chord.scale_notes.iter().filter(|n| n.strength >= 0.25).choose(&mut rand::thread_rng()).unwrap()
             } else {
                 chord.scale_notes.iter().filter(|n| n.strength >= 0.0).choose(&mut rand::thread_rng()).unwrap()

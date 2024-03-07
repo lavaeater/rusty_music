@@ -32,9 +32,6 @@ fn main() {
         .add_plugins(AudioPlugin)
         .insert_resource(Clock::new(beats, note_type, bpm))
         .insert_resource(Intensity(0.5))
-        // .add_systems(FixedUpdate, progress_clock_system)
-        // configure our fixed timestep schedule to run twice a second
-        // .insert_resource(Time::<Fixed>::from_seconds((60.0 / bpm as f64 / beats as f64) / (beats as f64 / beats as f64)))
         .add_audio_channel::<Soloists>()
         .add_audio_channel::<Drums>()
         .add_audio_channel::<Bass>()
@@ -60,16 +57,16 @@ fn setup(
     //         Soloist::new("Solo".to_string(), 4, 4, 2),
     //         MusicianType::Solo
     //     ));
-    // commands.spawn(
-    //     Musician::new(
-    //         "Bassist".to_string(),
-    //         Sampler {
-    //             handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav"),
-    //             volume: 0.7
-    //         },
-    //         Bassist::new("Bass".to_string()),
-    //         MusicianType::Bass
-    //     ));
+    commands.spawn(
+        Musician::new(
+            "Bassist".to_string(),
+            Sampler {
+                handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav"),
+                volume: 0.7
+            },
+            Bassist::new("Bass".to_string()),
+            MusicianType::Bass
+        ));
 
     commands.spawn(
         Musician::new(
@@ -153,53 +150,53 @@ pub fn generate_chords() -> Vec<Chord> {
 }
 
 
-pub fn generate_kick_beat() -> HashMap<u32, Note> {
-    // 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
-    // 0       1       2         3
+pub fn generate_kick_beat() -> HashMap<(u32, u32), Note> {
+    // 0 1 2 3 0 1 2 3 0 1 2 3 0 1 2 3
+    // 0       1       2       3
     HashMap::from([
-        (4, Note {
+        ((1,0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        (12, Note {
+        ((3, 0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        (14, Note {
+        ((3,2), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
     ])
 }
 
-pub fn generate_snare_beat() -> HashMap<u32, Note> {
+pub fn generate_snare_beat() -> HashMap<(u32, u32), Note> {
     HashMap::from([
-        (0, Note {
+        ((0,0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        (8, Note {
+        ((2,0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         })
     ])
 }
 
-pub fn generate_hihat_beat() -> HashMap<u32, Note> {
+pub fn generate_hihat_beat() -> HashMap<(u32, u32), Note> {
     HashMap::from([
-        (0, Note {
+        ((0,0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        (4, Note {
+        ((1,0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        (8, Note {
+        ((2,0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),
-        (12, Note {
+        ((3,0), Note {
             midi_note_diff: 0,
             strength: 0.5,
         }),

@@ -11,6 +11,7 @@ pub struct Clock {
     pub accumulator: f32,
     pub beat_length: f32,
     pub elapsed_time: f32,
+    pub sixteenth: u32,
     pub beat: u32,
     pub bar: u32,
 }
@@ -29,8 +30,13 @@ impl ProgressClock for Clock {
         if self.accumulator >= self.beat_length {
             // self.accumulator -= self.beat_length;
             self.accumulator = 0.0;
-            self.beat += 1;
-            if self.beat >= self.beats as u32 * 4 {
+            self.sixteenth += 1;
+            if self.sixteenth >= self.beats as u32 {
+                self.sixteenth = 0;
+                self.beat += 1;
+            }
+
+            if self.beat >= self.beats as u32 {
                 self.beat = 0;
                 self.bar += 1;
             }
@@ -52,8 +58,9 @@ impl Clock {
             accumulator: 0.0,
             elapsed_time: 0.0,
             beat_length: (60.0 / bpm / beats as f32) / (beats as f32 / note_type as f32),
-            beat: 0,
+            sixteenth: 0,
             bar: 0,
+            beat: 0,
         }
     }
 }
@@ -62,7 +69,18 @@ impl Clock {
 pub struct Beat {
     pub elapsed_time: f32,
     pub beat: u32,
+    pub sixteenth: u32,
     pub bar: u32,
+}
+impl Beat {
+    pub fn new(elapsed_time: f32, beat: u32, sixteenth: u32, bar: u32) -> Self {
+        Self {
+            elapsed_time,
+            beat,
+            sixteenth,
+            bar,
+        }
+    }
 }
 
 pub fn progress_clock_system(
@@ -70,10 +88,6 @@ pub fn progress_clock_system(
     mut beat_sender: EventWriter<Beat>,
 ) {
     if clock.progress(time.delta_seconds()) {
-        beat_sender.send(Beat {
-            elapsed_time: clock.elapsed_time,
-            beat: clock.beat,
-            bar: clock.bar,
-        });
+        beat_sender.send(Beat::new(clock.elapsed_time, clock.beat, clock.sixteenth, clock.bar));
     }
 }

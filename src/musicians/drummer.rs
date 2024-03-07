@@ -4,12 +4,12 @@ use crate::musicians::{Chord, MusicPlayer, Note};
 
 pub struct Drummer {
     pub name: String,
-    pub notes: HashMap<u32, Note>
+    pub notes: HashMap<(u32, u32), Note>
 }
 
 impl MusicPlayer for Drummer {
     fn get_note(&mut self, beat: Beat, base_intensity: f32, _chord: &Chord) -> Option<Note> {
-        if let Some(note) = self.notes.get(&beat.beat) {
+        if let Some(note) = self.notes.get(&(beat.beat, beat.sixteenth)) {
             return if note.strength <= base_intensity {
                 Some(*note)
             } else {

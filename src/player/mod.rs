@@ -1,6 +1,5 @@
 use std::cmp::Ordering;
-use bevy::prelude::{EventReader, Local, Query, Res, ResMut, Resource};
-use bevy::render::render_resource::binding_types::sampler;
+use bevy::prelude::{EventReader, Query, Res, ResMut, Resource};
 use bevy_kira_audio::{AudioChannel, AudioControl};
 use bevy_kira_audio::prelude::Volume;
 use crate::clock::Beat;
@@ -48,7 +47,7 @@ pub fn play_sound_on_the_beat(
     bass: Res<AudioChannel<Bass>>,
     solos: Res<AudioChannel<Soloists>>,
     conductor: Res<Conductor>,
-    mut intensity: ResMut<Intensity>,
+    intensity: Res<Intensity>,
     mut instruments: Query<&mut Musician>,
 ) {
     for beat in beat_reader.read() {
