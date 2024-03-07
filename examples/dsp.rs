@@ -22,6 +22,10 @@ fn main() {
         .add_systems(Update, change_intensity)
         .add_dsp_source(sine_wave, SourceType::Static { duration: 0.25 })
         .add_dsp_source(triangle_wave, SourceType::Static { duration: 0.25 })
+        .add_dsp_source(kick_wave, SourceType::Static { duration: 0.25 })
+        .add_dsp_source(snare_wave, SourceType::Static { duration: 0.25 })
+        .add_dsp_source(hat_wave, SourceType::Static { duration: 0.25 })
+        .add_dsp_source(square_wave, SourceType::Static { duration: 0.25 })
         .add_systems(Startup, setup)
         .run();
 }
@@ -55,29 +59,24 @@ fn triangle_wave() -> impl AudioUnit32 {
     triangle_hz(392.0) >> split::<U2>() * 0.2
 }
 
-fn interactive_audio(
-    input: Res<ButtonInput<KeyCode>>,
-    mut assets: ResMut<Assets<AudioSource>>,
-    dsp_manager: Res<DspManager>,
-    audio: ResMut<Audio>,
-) {
-    if input.just_pressed(KeyCode::KeyS) {
-        let source = dsp_manager
-            .get_graph(sine_wave)
-            .unwrap_or_else(|| panic!("DSP source not found!"));
-        let audio_source = DefaultBackend::convert_to_audio_source(source.clone());
-        let audio_source = assets.add(audio_source);
-        audio.play(audio_source);
-    }
+fn square_wave() -> impl AudioUnit32 {
+    // Note is G4
+    square_hz(392.0) >> split::<U2>() * 0.2
+}
 
-    if input.just_pressed(KeyCode::KeyT) {
-        let source = dsp_manager
-            .get_graph(triangle_wave)
-            .unwrap_or_else(|| panic!("DSP source not found!"));
-        let audio_source = DefaultBackend::convert_to_audio_source(source.clone());
-        let audio_source = assets.add(audio_source);
-        audio.play(audio_source);
-    }
+fn kick_wave() -> impl AudioUnit32 {
+    // Note is G4
+    square_hz(40.0) >> split::<U2>() * 0.2
+}
+
+fn hat_wave() -> impl AudioUnit32 {
+    // Note is G4
+    square_hz(1200.0) >> split::<U2>() * 0.2
+}
+
+fn snare_wave() -> impl AudioUnit32 {
+    // Note is G4
+    square_hz(800.0) >> split::<U2>() * 0.2
 }
 
 fn setup(
@@ -86,7 +85,7 @@ fn setup(
     dsp_manager: Res<DspManager>,
 ) {
     let source = dsp_manager
-        .get_graph(triangle_wave)
+        .get_graph(square_wave)
         .unwrap_or_else(|| panic!("DSP source not found!"));
     let audio_source = DefaultBackend::convert_to_audio_source(source.clone());
     let audio_source = assets.add(audio_source);
@@ -96,7 +95,7 @@ fn setup(
             "Melody".to_string(),
             Sampler {
                 handle: audio_source,
-                volume: 1.0,
+                volume: 0.7,
             },
             Soloist::new("Solo".to_string(), 4, 4, 2),
             MusicianType::Solo,
@@ -113,53 +112,72 @@ fn setup(
             "Bassist".to_string(),
             Sampler {
                 handle: audio_source,
-                volume: 0.7,
+                volume: 1.0,
             },
             Bassist::new("Bass".to_string()),
             MusicianType::Bass,
         ));
 
-    // commands.spawn(
-    //     Musician::new(
-    //         "Kick".to_string(),
-    //         Sampler {
-    //             handle: asset_server.load("samples/drums/kit-d/kick.wav"),
-    //             volume: 1.0,
-    //         },
-    //         Drummer {
-    //             name: "Kick".to_string(),
-    //             notes: generate_kick_beat(),
-    //         },
-    //         MusicianType::Drums,
-    //     )
-    // );
-    // commands.spawn(
-    //     Musician::new(
-    //         "Kick".to_string(),
-    //         Sampler {
-    //             handle: asset_server.load("samples/drums/kit-d/snare.wav"),
-    //             volume: 1.0,
-    //         },
-    //         Drummer {
-    //             name: "Kick".to_string(),
-    //             notes: generate_snare_beat(),
-    //         },
-    //         MusicianType::Drums,
-    //     )
-    // );
-    //
-    // commands.spawn(Musician::new(
-    //     "Hihat".to_string(),
-    //     Sampler {
-    //         handle: asset_server.load("samples/drums/kit-d/hihat.wav"),
-    //         volume: 1.0,
-    //     },
-    //     Drummer {
-    //         name: "HiHat".to_string(),
-    //         notes: generate_hihat_beat(),
-    //     },
-    //     MusicianType::Drums,
-    // ));
+    let source = dsp_manager
+        .get_graph(kick_wave)
+        .unwrap_or_else(|| panic!("DSP source not found!"));
+    let audio_source = DefaultBackend::convert_to_audio_source(source.clone());
+    let audio_source = assets.add(audio_source);
+
+    commands.spawn(
+        Musician::new(
+            "Kick".to_string(),
+            Sampler {
+                handle: audio_source,
+                volume: 1.0,
+            },
+            Drummer {
+                name: "Kick".to_string(),
+                notes: generate_kick_beat(),
+            },
+            MusicianType::Drums,
+        )
+    );
+
+    let source = dsp_manager
+        .get_graph(snare_wave)
+        .unwrap_or_else(|| panic!("DSP source not found!"));
+    let audio_source = DefaultBackend::convert_to_audio_source(source.clone());
+    let audio_source = assets.add(audio_source);
+
+    commands.spawn(
+        Musician::new(
+            "Snare".to_string(),
+            Sampler {
+                handle: audio_source,
+                volume: 1.0,
+            },
+            Drummer {
+                name: "Snare".to_string(),
+                notes: generate_snare_beat(),
+            },
+            MusicianType::Drums,
+        )
+    );
+
+    let source = dsp_manager
+        .get_graph(hat_wave)
+        .unwrap_or_else(|| panic!("DSP source not found!"));
+    let audio_source = DefaultBackend::convert_to_audio_source(source.clone());
+    let audio_source = assets.add(audio_source);
+
+    commands.spawn(Musician::new(
+        "Hihat".to_string(),
+        Sampler {
+            handle: audio_source,
+            volume: 1.0,
+        },
+        Drummer {
+            name: "HiHat".to_string(),
+            notes: generate_hihat_beat(),
+        },
+        MusicianType::Drums,
+    ));
 
     commands.insert_resource(Conductor {
         chords: generate_chords()
