@@ -20,8 +20,8 @@ fn main() {
         })
         .add_plugins(DspPlugin::default())
         .add_systems(Update, change_intensity)
-        .add_dsp_source(sine_wave, SourceType::Static { duration: 0.5 })
-        .add_dsp_source(triangle_wave, SourceType::Static { duration: 0.5 })
+        .add_dsp_source(sine_wave, SourceType::Static { duration: 0.25 })
+        .add_dsp_source(triangle_wave, SourceType::Static { duration: 0.25 })
         .add_systems(Startup, setup)
         .run();
 }
@@ -45,7 +45,6 @@ fn change_intensity(
         intensity.0 = 1.0;
     }
 }
-
 fn sine_wave() -> impl AudioUnit32 {
     // Note is A4
     sine_hz(440.0) >> split::<U2>() * 0.2
