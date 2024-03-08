@@ -1,4 +1,5 @@
 use bevy::app::{App, Plugin, Update};
+use bevy::reflect::Enum;
 use bevy_kira_audio::{AudioApp, AudioPlugin};
 use crate::clock::{Beat, Clock, progress_clock_system};
 use crate::musicians::{Bass, Chord, Drums, Note, Soloists};
@@ -8,8 +9,6 @@ pub mod clock;
 pub mod player;
 pub mod conductor;
 pub mod musicians;
-
-
 
 pub struct MusicPlugin {
     pub beats: u32,
@@ -45,19 +44,23 @@ impl Plugin for MusicPlugin {
 
 pub fn generate_chords() -> Vec<Chord> {
     let scale_notes = vec![
-        Note::new(-1, 1.0),
-        Note::new(1, 0.2),
-        Note::new(3, 0.6),
-        Note::new(4, 0.5),
-        Note::new(6, 0.7),
-        Note::new(8, 0.4),
-        Note::new(9, 0.1),
+        Note::new(-2, 1.0),
+        Note::new(0, 0.2),
+        Note::new(2, 0.6),
+        Note::new(-4, 0.5),
+        Note::new(8, 0.7),
+        Note::new(-4, 0.4),
+        Note::new(3, 0.1),
     ];
     vec![
         Chord::new(0, vec![
-            Note::new(0, 1.0),
-            Note::new(0, 0.5),
-            Note::new(2, 0.2),
+            Note::new(-2, 1.0),
+            Note::new(0, 0.2),
+            Note::new(2, 0.6),
+            Note::new(-4, 0.5),
+            Note::new(8, 0.7),
+            Note::new(-4, 0.4),
+            Note::new(3, 0.1),
         ], scale_notes.clone()),
         Chord::new(1, vec![
             Note::new(-2, 1.0),
@@ -70,9 +73,13 @@ pub fn generate_chords() -> Vec<Chord> {
             Note::new(-2, 0.4),
         ], scale_notes.clone()),
         Chord::new(3, vec![
-            Note::new(-2, 0.2),
-            Note::new(1, 0.5),
-            Note::new(-4, 1.0),
+            Note::new(-2, 1.0),
+            Note::new(0, 0.2),
+            Note::new(2, 0.6),
+            Note::new(-4, 0.5),
+            Note::new(8, 0.7),
+            Note::new(-4, 0.4),
+            Note::new(3, 0.1),
         ], scale_notes.clone()),
     ]
 }
