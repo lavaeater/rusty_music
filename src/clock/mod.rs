@@ -13,7 +13,9 @@ pub struct Clock {
     pub elapsed_time: f32,
     pub sixteenth: u32,
     pub beat: u32,
-    pub bar: u32,
+    pub bar_count: u32,
+    pub beat_count: u32,
+    pub sixteenth_count: u32,
 }
 
 trait ProgressClock {
@@ -31,14 +33,16 @@ impl ProgressClock for Clock {
             // self.accumulator -= self.beat_length;
             self.accumulator = 0.0;
             self.sixteenth += 1;
+            self.sixteenth_count += 1;
             if self.sixteenth >= self.beats as u32 {
                 self.sixteenth = 0;
                 self.beat += 1;
+                self.beat_count += 1;
             }
 
             if self.beat >= self.beats as u32 {
                 self.beat = 0;
-                self.bar += 1;
+                self.bar_count += 1;
             }
 
             return true;
@@ -59,8 +63,10 @@ impl Clock {
             elapsed_time: 0.0,
             beat_length: (60.0 / bpm / beats as f32) / (beats as f32 / note_type as f32),
             sixteenth: 0,
-            bar: 0,
+            bar_count: 0,
             beat: 0,
+            beat_count: 0,
+            sixteenth_count: 0,
         }
     }
 }
@@ -70,15 +76,20 @@ pub struct Beat {
     pub elapsed_time: f32,
     pub beat: u32,
     pub sixteenth: u32,
-    pub bar: u32,
+    pub bar_count: u32,
+    pub beat_count: u32,
+    pub sixteenth_count: u32,
+
 }
 impl Beat {
-    pub fn new(elapsed_time: f32, beat: u32, sixteenth: u32, bar: u32) -> Self {
+    pub fn new(elapsed_time: f32, beat: u32, sixteenth: u32, bar_count: u32, beat_count: u32, sixteenth_count: u32) -> Self {
         Self {
             elapsed_time,
             beat,
             sixteenth,
-            bar,
+            bar_count,
+            beat_count,
+            sixteenth_count
         }
     }
 }
@@ -88,6 +99,6 @@ pub fn progress_clock_system(
     mut beat_sender: EventWriter<Beat>,
 ) {
     if clock.progress(time.delta_seconds()) {
-        beat_sender.send(Beat::new(clock.elapsed_time, clock.beat, clock.sixteenth, clock.bar));
+        beat_sender.send(Beat::new(clock.elapsed_time, clock.beat, clock.sixteenth, clock.bar_count, clock.beat_count, clock.sixteenth_count));
     }
 }

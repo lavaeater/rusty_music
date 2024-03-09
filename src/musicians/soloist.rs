@@ -30,10 +30,10 @@ impl Soloist {
 
 impl MusicPlayer for Soloist {
     fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) {
-        let recording_index = beat.sixteenth + beat.bar % self.record_bars * self.beats_per_bar;
+        let recording_index = beat.sixteenth + beat.bar_count % self.record_bars * self.beats_per_bar;
         let repeat_end_bars = self.repeat_bar + (self.repeats * self.record_bars) as i32;
 
-        if let Some(note) = if (beat.bar as i32) < repeat_end_bars {
+        if let Some(note) = if (beat.bar_count as i32) < repeat_end_bars {
             self.recorded_melody[recording_index as usize]
         } else {
             // if self.recorded_melody.len() > (self.record_bars * self.beats_per_bar) as usize {
@@ -53,7 +53,7 @@ impl MusicPlayer for Soloist {
             self.recorded_melody.push(note.copied());
             let last_recording_index = self.record_bars * self.beats_per_bar - 1;
             if recording_index > last_recording_index {
-                self.repeat_bar = beat.bar as i32;
+                self.repeat_bar = beat.bar_count as i32;
             }
             note.copied()
         } {

@@ -6,6 +6,7 @@ use rusty_music::musicians::conductor::Conductor;
 use rusty_music::musicians::drummer::{Drummer, generate_hihat_beat, generate_kick_beat, generate_snare_beat};
 use rusty_music::musicians::soloist::Soloist;
 use rusty_music::{generate_chords, MusicPlugin};
+use rusty_music::musicians::arpegggiator::Arpeggiator;
 use rusty_music::player::Intensity;
 
 fn main() {
@@ -52,6 +53,14 @@ fn setup(
                 handle: asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
                 volume: 0.251188643150958,
             }, 4, 4, 2),
+        ));
+    commands.spawn(
+        Musician::new(
+            "Arpeggio".to_string(),
+            Arpeggiator::new(Sampler {
+                handle: asset_server.load("samples/lo-fi/construction/120/acid/long/c.wav"),
+                volume: 0.251188643150958,
+            }),
         ));
     commands.spawn(
         Musician::new(
