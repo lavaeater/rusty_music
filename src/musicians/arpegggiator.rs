@@ -32,11 +32,11 @@ impl Arpeggiator {
 impl MusicPlayer for Arpeggiator {
     fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) {
         let step_size = if base_intensity < 0.4 {
-            8
-        } else if base_intensity > 0.7 {
-            2
-        } else {
             4
+        } else if base_intensity > 0.7 {
+            8
+        } else {
+            16
         };
 
         if beat.sixteenth_count > self.next_sixteenth {
