@@ -3,22 +3,44 @@ pub mod conductor;
 pub mod bassist;
 pub mod soloist;
 
-use bevy::prelude::{Component, Resource};
-use bevy_kira_audio::{AudioSource};
+use std::cmp::Ordering;
+use bevy::prelude::{Component, Res};
+use bevy_kira_audio::{Audio, AudioSource};
 use bevy::asset::Handle;
 use crate::clock::Beat;
 
-#[derive(Resource)]
-pub struct Soloists;
 
-#[derive(Resource)]
-pub struct Drums;
+pub fn midi_diff_to_pitch_what(midi_diff: i32) -> f64 {
+    let f = 2.0f64.powf(midi_diff as f64 / 12.0);
+    f
+}
 
-#[derive(Resource)]
-pub struct Bass;
+pub fn midi_diff_to_pitch(midi_diff: i32) -> f64 {
+    let min_pitch = -12;
+    let max_pitch = 12;
+    match midi_diff.cmp(&0) {
+        Ordering::Less => {
+            if midi_diff < min_pitch {
+                0.5
+            } else {
+                midi_diff_to_pitch_what(midi_diff)
+            }
+        }
+        Ordering::Equal => {
+            1.0
+        }
+        Ordering::Greater => {
+            if midi_diff > max_pitch {
+                2.0
+            } else {
+                midi_diff_to_pitch_what(midi_diff)
+            }
+        }
+    }
+}
 
 pub trait MusicPlayer: Send + Sync {
-    fn get_note(&mut self, beat: Beat, base_intensity: f32, chord: &Chord) -> Option<Note>;
+    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord);
 }
 
 pub struct Sampler {
@@ -58,27 +80,17 @@ impl Chord {
     }
 }
 
-pub enum MusicianType {
-    Drums,
-    Bass,
-    Solo,
-}
-
 #[derive(Component)]
 pub struct Musician {
     pub name: String,
-    pub sampler: Sampler,
-    pub player: Box<dyn MusicPlayer>,
-    pub musician_type: MusicianType,
+    pub player: Box<dyn MusicPlayer>
 }
 
 impl Musician {
-    pub fn new(name: String, sampler: Sampler, player: impl MusicPlayer + 'static, musician_type: MusicianType) -> Self {
+    pub fn new(name: String, player: impl MusicPlayer + 'static) -> Self {
         Self {
             name,
-            sampler,
             player: Box::new(player),
-            musician_type,
         }
     }
 }

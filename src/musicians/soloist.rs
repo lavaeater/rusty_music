@@ -1,3 +1,5 @@
+use bevy::prelude::Res;
+use bevy_kira_audio::Audio;
 use rand::Rng;
 use crate::clock::Beat;
 use crate::musicians::{Chord, MusicPlayer, Note};
@@ -26,7 +28,7 @@ impl Soloist {
 }
 
 impl MusicPlayer for Soloist {
-    fn get_note(&mut self, beat: Beat, base_intensity: f32, chord: &Chord) -> Option<Note> {
+    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) -> Option<Note> {
         let recording_index = beat.sixteenth + beat.bar % self.record_bars * self.beats_per_bar;
         let repeat_end_bars = self.repeat_bar + (self.repeats * self.record_bars) as i32;
 

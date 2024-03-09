@@ -1,3 +1,5 @@
+use bevy::prelude::Res;
+use bevy_kira_audio::Audio;
 use rand::Rng;
 use crate::clock::Beat;
 use crate::musicians::{Chord, MusicPlayer, Note};
@@ -18,7 +20,7 @@ impl Bassist {
 }
 
 impl MusicPlayer for Bassist {
-    fn get_note(&mut self, beat: Beat, base_intensity: f32, chord: &Chord) -> Option<Note> {
+    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) -> Option<Note> {
         // Strong notes on the downbeat (0, first sixteenth)
         return if beat.beat == 0 && beat.sixteenth == 0 {
             chord

@@ -1,12 +1,12 @@
 use bevy::app::{App, Plugin, Update};
-use bevy::reflect::Enum;
-use bevy_kira_audio::{AudioApp, AudioPlugin};
+use bevy_kira_audio::{AudioPlugin};
 use crate::clock::{Beat, Clock, progress_clock_system};
-use crate::musicians::{Bass, Chord, Drums, Note, Soloists};
+use crate::musicians::{Chord, Note};
 use crate::player::{Intensity, play_sound_on_the_beat};
 
 pub mod clock;
 pub mod player;
+
 pub mod conductor;
 pub mod musicians;
 
@@ -32,9 +32,6 @@ impl Plugin for MusicPlugin {
             .add_plugins(AudioPlugin)
             .insert_resource(Clock::new(self.beats, self.note_type, self.bpm))
             .insert_resource(Intensity(0.5))
-            .add_audio_channel::<Soloists>()
-            .add_audio_channel::<Drums>()
-            .add_audio_channel::<Bass>()
             .add_event::<Beat>()
             .add_systems(Update, (
                 progress_clock_system,

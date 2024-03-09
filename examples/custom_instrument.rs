@@ -1,17 +1,12 @@
 use bevy::DefaultPlugins;
 use bevy::prelude::{App, AssetServer, ButtonInput, Commands, KeyCode, Res, ResMut, Resource, Startup, Update};
-use bevy::reflect::Enum;
-use bevy_kira_audio::{AudioApp, AudioChannel};
-use rusty_music::musicians::{drummer, Drums, Musician, MusicianType, Sampler};
+use rusty_music::musicians::{Musician, Sampler};
 use rusty_music::musicians::bassist::Bassist;
 use rusty_music::musicians::conductor::Conductor;
 use rusty_music::musicians::drummer::{Drummer, generate_hihat_beat, generate_kick_beat, generate_snare_beat};
 use rusty_music::musicians::soloist::Soloist;
 use rusty_music::{generate_chords, MusicPlugin};
 use rusty_music::player::Intensity;
-
-#[derive(Debug, Resource)]
-pub struct MyChannel;
 
 fn main() {
     App::new()
@@ -21,7 +16,6 @@ fn main() {
             note_type: 4,
             bpm: 120.0,
         })
-        .add_audio_channel::<MyChannel>()
         .add_systems(Update, change_intensity)
         .add_systems(Startup, setup)
         .run();
@@ -59,7 +53,6 @@ fn setup(
                 volume: 0.251188643150958,
             },
             Soloist::new("Solo".to_string(), 4, 4, 2),
-            MusicianType::Solo,
         ));
     commands.spawn(
         Musician::new(
@@ -69,7 +62,6 @@ fn setup(
                 volume: 0.7,
             },
             Bassist::new("Bass".to_string()),
-            MusicianType::Bass,
         ));
 
     commands.spawn(
@@ -83,7 +75,6 @@ fn setup(
                 name: "Kick".to_string(),
                 notes: generate_kick_beat(),
             },
-            MusicianType::Drums,
         )
     );
     commands.spawn(
@@ -97,7 +88,6 @@ fn setup(
                 name: "Kick".to_string(),
                 notes: generate_snare_beat(),
             },
-            MusicianType::Drums,
         )
     );
 
@@ -111,7 +101,6 @@ fn setup(
             name: "HiHat".to_string(),
             notes: generate_hihat_beat(),
         },
-        MusicianType::Drums,
     ));
 
     commands.insert_resource(Conductor {

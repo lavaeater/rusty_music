@@ -1,22 +1,25 @@
+use bevy::prelude::Res;
 use bevy::utils::HashMap;
+use bevy_kira_audio::{Audio, AudioControl};
+use bevy_kira_audio::prelude::Volume;
+use rand::prelude::IteratorRandom;
 use crate::clock::Beat;
-use crate::musicians::{Chord, MusicPlayer, Note};
+use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler};
 
 pub struct Drummer {
-    pub name: String,
-    pub notes: HashMap<(u32, u32), Note>
+    pub notes: HashMap<(u32, u32), Note>,
+    pub sampler: Sampler,
 }
 
 impl MusicPlayer for Drummer {
-    fn get_note(&mut self, beat: Beat, base_intensity: f32, _chord: &Chord) -> Option<Note> {
-        if let Some(note) = self.notes.get(&(beat.beat, beat.sixteenth)) {
-            return if note.strength <= base_intensity {
-                Some(*note)
-            } else {
-                None
-            }
+    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) {
+        if let Some(note_to_play) = self.notes.iter().filter(|(k, v) | {
+            k.0 == beat.beat && k.1 == beat.sixteenth && v.strength <= base_intensity
+        }).choose(&mut rand::thread_rng()) {
+            audio.play(self.sampler.handle.clone_weak())
+                .with_volume(Volume::from(self.sampler.volume))
+                .with_playback_rate(midi_diff_to_pitch(note_to_play.1.midi_note_diff));
         }
-        None
     }
 }
 

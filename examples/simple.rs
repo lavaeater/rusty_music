@@ -1,6 +1,6 @@
 use bevy::DefaultPlugins;
 use bevy::prelude::{App, AssetServer, ButtonInput, Commands, KeyCode, Res, ResMut, Startup, Update};
-use rusty_music::musicians::{drummer, Musician, MusicianType, Sampler};
+use rusty_music::musicians::{Musician, Sampler};
 use rusty_music::musicians::bassist::Bassist;
 use rusty_music::musicians::conductor::Conductor;
 use rusty_music::musicians::drummer::{Drummer, generate_hihat_beat, generate_kick_beat, generate_snare_beat};
@@ -53,7 +53,6 @@ fn setup(
                 volume: 0.251188643150958,
             },
             Soloist::new("Solo".to_string(), 4, 4, 2),
-            MusicianType::Solo,
         ));
     commands.spawn(
         Musician::new(
@@ -63,7 +62,6 @@ fn setup(
                 volume: 0.7,
             },
             Bassist::new("Bass".to_string()),
-            MusicianType::Bass,
         ));
 
     commands.spawn(
@@ -77,7 +75,6 @@ fn setup(
                 name: "Kick".to_string(),
                 notes: generate_kick_beat(),
             },
-            MusicianType::Drums,
         )
     );
     commands.spawn(
@@ -91,7 +88,6 @@ fn setup(
                 name: "Kick".to_string(),
                 notes: generate_snare_beat(),
             },
-            MusicianType::Drums,
         )
     );
 
@@ -105,7 +101,6 @@ fn setup(
             name: "HiHat".to_string(),
             notes: generate_hihat_beat(),
         },
-        MusicianType::Drums,
     ));
 
     commands.insert_resource(Conductor {
