@@ -52,7 +52,7 @@ fn setup(
             Soloist::new(Sampler {
                 handle: asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
                 volume: 0.251188643150958,
-            }, 4, 4, 2),
+            }, 2, 4, 2),
         ));
     commands.spawn(
         Musician::new(

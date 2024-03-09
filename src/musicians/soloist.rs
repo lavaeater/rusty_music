@@ -30,16 +30,20 @@ impl Soloist {
 
 impl MusicPlayer for Soloist {
     fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) {
-        let recording_index = beat.sixteenth + beat.bar_count % self.record_bars * self.beats_per_bar;
+        let recording_index = beat.sixteenth_count % (self.record_bars * self.beats_per_bar);
         let repeat_end_bars = self.repeat_bar + (self.repeats * self.record_bars) as i32;
+
+        println!("recording_index: {}, repeat_end_bars: {}, recording_lenght: {}", recording_index, repeat_end_bars, self.recorded_melody.len());
 
         if let Some(note) = if (beat.bar_count as i32) < repeat_end_bars {
             self.recorded_melody[recording_index as usize]
         } else {
-            // if self.recorded_melody.len() > (self.record_bars * self.beats_per_bar) as usize {
-            //     self.recorded_melody.clear();
-            // }
-            let note = if beat.beat == 0 {
+            let max_recording_size = self.record_bars * self.beats_per_bar;
+            if self.recorded_melody.len() > max_recording_size as usize {
+                println!("clearing recorded melody");
+                self.recorded_melody.clear();
+            }
+            let note = if beat.beat == 0 &&  beat.sixteenth == 0 {
                 chord.scale_notes.iter().filter(|n| n.strength >= 1.0).choose(&mut rand::thread_rng())
             } else if beat.sixteenth == 3 && rand::thread_rng().gen_bool(0.5) {
                 chord.scale_notes.iter().filter(|n| n.strength >= 0.5).choose(&mut rand::thread_rng())
@@ -51,8 +55,8 @@ impl MusicPlayer for Soloist {
                 None
             };
             self.recorded_melody.push(note.copied());
-            let last_recording_index = self.record_bars * self.beats_per_bar - 1;
-            if recording_index > last_recording_index {
+            println!("last_recording_index: {}, length: {}", max_recording_size, self.recorded_melody.len());
+            if self.recorded_melody.len() > max_recording_size as usize {
                 self.repeat_bar = beat.bar_count as i32;
             }
             note.copied()
