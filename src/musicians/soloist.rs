@@ -49,7 +49,7 @@ impl MusicPlayer for Soloist {
                 chord.scale_notes.iter().filter(|n| n.strength >= 0.5).choose(&mut rand::thread_rng())
             } else if (beat.sixteenth == 2 || beat.sixteenth == 0) && rand::thread_rng().gen_range(0.0..=1.0) < (base_intensity - 0.25) {
                 chord.scale_notes.iter().filter(|n| n.strength >= 0.25).choose(&mut rand::thread_rng())
-            } else if rand::thread_rng().gen_range(0.0..=1.0) < (base_intensity - 0.5) {
+            } else if beat.sixteenth == 0 && rand::thread_rng().gen_range(0.0..=1.0) < (base_intensity - 0.5) {
                 chord.scale_notes.iter().filter(|n| n.strength >= 0.0).choose(&mut rand::thread_rng())
             } else {
                 None
