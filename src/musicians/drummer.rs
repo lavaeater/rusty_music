@@ -11,8 +11,17 @@ pub struct Drummer {
     pub sampler: Sampler,
 }
 
+impl Drummer {
+    pub fn new(sampler: Sampler, notes: HashMap<(u32, u32), Note>) -> Self {
+        Self {
+            notes,
+            sampler,
+        }
+    }
+}
+
 impl MusicPlayer for Drummer {
-    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) {
+    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, _chord: &Chord) {
         if let Some(note_to_play) = self.notes.iter().filter(|(k, v) | {
             k.0 == beat.beat && k.1 == beat.sixteenth && v.strength <= base_intensity
         }).choose(&mut rand::thread_rng()) {

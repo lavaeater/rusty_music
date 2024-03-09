@@ -75,9 +75,3 @@ path = "examples/simple.rs"
 name = "custom_instrument"
 path = "examples/custom_instrument.rs"
 
-[[example]]
-name = "dsp"
-path = "examples/dsp.rs"
-required-features = ["fundsp"]
-
-

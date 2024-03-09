@@ -1,38 +1,39 @@
 use bevy::prelude::Res;
-use bevy_kira_audio::Audio;
+use bevy_kira_audio::{Audio, AudioControl};
+use bevy_kira_audio::prelude::Volume;
 use rand::Rng;
 use crate::clock::Beat;
-use crate::musicians::{Chord, MusicPlayer, Note};
+use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler};
 use rand::seq::IteratorRandom;
 
 pub struct Soloist {
-    pub name: String,
     pub record_bars: u32,
     pub repeats: u32,
     pub beats_per_bar: u32,
     pub recorded_melody: Vec<Option<Note>>,
     pub repeat_bar: i32,
+    sampler: Sampler
 }
 
 impl Soloist {
-    pub fn new(name: String, record_bars: u32, beats_per_bar: u32, repeats: u32) -> Self {
+    pub fn new(sampler: Sampler, record_bars: u32, beats_per_bar: u32, repeats: u32) -> Self {
         Self {
-            name,
             record_bars,
             repeats,
             beats_per_bar,
             recorded_melody: Vec::with_capacity((record_bars * beats_per_bar) as usize),
             repeat_bar: -999,
+            sampler
         }
     }
 }
 
 impl MusicPlayer for Soloist {
-    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) -> Option<Note> {
+    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) {
         let recording_index = beat.sixteenth + beat.bar % self.record_bars * self.beats_per_bar;
         let repeat_end_bars = self.repeat_bar + (self.repeats * self.record_bars) as i32;
 
-        return if (beat.bar as i32) < repeat_end_bars {
+        if let Some(note) = if (beat.bar as i32) < repeat_end_bars {
             self.recorded_melody[recording_index as usize]
         } else {
             // if self.recorded_melody.len() > (self.record_bars * self.beats_per_bar) as usize {
@@ -55,6 +56,10 @@ impl MusicPlayer for Soloist {
                 self.repeat_bar = beat.bar as i32;
             }
             note.copied()
-        };
+        } {
+            audio.play(self.sampler.handle.clone_weak())
+                .with_volume(Volume::from(self.sampler.volume))
+                .with_playback_rate(midi_diff_to_pitch(note.midi_note_diff));
+        }
     }
 }

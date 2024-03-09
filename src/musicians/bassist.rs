@@ -1,28 +1,27 @@
 use bevy::prelude::Res;
-use bevy_kira_audio::Audio;
+use bevy_kira_audio::{Audio, AudioControl};
+use bevy_kira_audio::prelude::Volume;
 use rand::Rng;
 use crate::clock::Beat;
-use crate::musicians::{Chord, MusicPlayer, Note};
+use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler};
 use rand::seq::IteratorRandom;
 
 pub struct Bassist {
-    pub name: String,
-    pub previous_beat: u32,
+    pub sampler: Sampler
 }
 
 impl Bassist {
-    pub fn new(name: String) -> Self {
+    pub fn new(sampler: Sampler) -> Self {
         Self {
-            name,
-            previous_beat: 220,
+            sampler
         }
     }
 }
 
 impl MusicPlayer for Bassist {
-    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) -> Option<Note> {
+    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) {
         // Strong notes on the downbeat (0, first sixteenth)
-        return if beat.beat == 0 && beat.sixteenth == 0 {
+        if let Some(note) = if beat.beat == 0 && beat.sixteenth == 0 {
             chord
                 .chord_notes
                 .iter()
@@ -56,6 +55,10 @@ impl MusicPlayer for Bassist {
                 .choose(&mut rand::thread_rng()).copied().copied()
         } else {
             None
-        };
+        } {
+            audio.play(self.sampler.handle.clone_weak())
+                .with_volume(Volume::from(self.sampler.volume))
+                .with_playback_rate(midi_diff_to_pitch(note.midi_note_diff));
+        }
     }
 }

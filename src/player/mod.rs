@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use bevy::prelude::{EventReader, Query, Res, Resource};
 use bevy_kira_audio::Audio;
 use crate::clock::Beat;
@@ -11,8 +10,6 @@ pub struct Intensity(pub f32);
 pub fn play_sound_on_the_beat(
     mut beat_reader: EventReader<Beat>,
     audio: Res<Audio>,
-    // bass: Res<AudioChannel<Bass>>,
-    // solos: Res<AudioChannel<Soloists>>,
     conductor: Res<Conductor>,
     intensity: Res<Intensity>,
     mut instruments: Query<&mut Musician>,

@@ -48,59 +48,54 @@ fn setup(
     commands.spawn(
         Musician::new(
             "Melody".to_string(),
-            Sampler {
+            Soloist::new(Sampler {
                 handle: asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
                 volume: 0.251188643150958,
-            },
-            Soloist::new("Solo".to_string(), 4, 4, 2),
+            }, 4, 4, 2),
         ));
     commands.spawn(
         Musician::new(
             "Bassist".to_string(),
-            Sampler {
+            Bassist::new(Sampler {
                 handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav"),
                 volume: 0.7,
-            },
-            Bassist::new("Bass".to_string()),
+            }),
         ));
 
     commands.spawn(
         Musician::new(
             "Kick".to_string(),
-            Sampler {
-                handle: asset_server.load("samples/drums/kit-d/kick.wav"),
-                volume: 1.0,
-            },
-            Drummer {
-                name: "Kick".to_string(),
-                notes: generate_kick_beat(),
-            },
+            Drummer::new(
+                Sampler {
+                    handle: asset_server.load("samples/drums/kit-d/kick.wav"),
+                    volume: 1.0,
+                },
+                generate_kick_beat(),
+            ),
         )
     );
     commands.spawn(
         Musician::new(
             "Kick".to_string(),
-            Sampler {
-                handle: asset_server.load("samples/drums/kit-d/snare.wav"),
-                volume: 1.0,
-            },
-            Drummer {
-                name: "Kick".to_string(),
-                notes: generate_snare_beat(),
-            },
+            Drummer::new(
+                Sampler {
+                    handle: asset_server.load("samples/drums/kit-d/snare.wav"),
+                    volume: 1.0,
+                },
+                generate_snare_beat(),
+            ),
         )
     );
 
     commands.spawn(Musician::new(
         "Hihat".to_string(),
-        Sampler {
-            handle: asset_server.load("samples/drums/kit-d/hihat.wav"),
-            volume: 1.0,
-        },
-        Drummer {
-            name: "HiHat".to_string(),
-            notes: generate_hihat_beat(),
-        },
+        Drummer::new(
+            Sampler {
+                handle: asset_server.load("samples/drums/kit-d/hihat.wav"),
+                volume: 1.0,
+            },
+            generate_hihat_beat(),
+        ),
     ));
 
     commands.insert_resource(Conductor {
