@@ -14,3 +14,12 @@ intensify the music.
 
 So you could control intensity by counting the number of enemies, level of health,
 whatever. It's pretty cool actually. 
+
+NOTICE: I have added support for bevy_fundsp, however the author had,
+at the time I wrote this plugin, not updated to bevy 0.13 - so I forked it and
+updated it myself. I have submitted that update as a PR to the author of
+bevy_fundsp, if he accepts it or updates the crate himself I will of course
+change the dependency to the official crate instead.
+
+All the samples included in this repository are royalty-free that I downloaded
+from some music site with sample packs. 
