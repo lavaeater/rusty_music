@@ -31,7 +31,7 @@ exclude = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.13", default-features = false, features = [
+bevy = { version = "0.12.1", default-features = false, features = [
     "animation",
     "bevy_asset",
     "bevy_gilrs",
@@ -52,12 +52,11 @@ bevy = { version = "0.13", default-features = false, features = [
     "tonemapping_luts",
     "default_font",
     "webgl2",
-    "bevy_debug_stepping",
 ] }
 bevy_kira_audio = { version = "0.19" , features = ["wav"], optional = true}
 rand = "0.8.5"
 bevy-rusty-music-macros = { version="0.1.0", path = "macros" }
-bevy_fundsp = { git = "https://github.com/lavaeater/bevy_fundsp.git", branch = "bevy-0.13", default-features = false, features = ["kira"], optional = true }
+bevy_fundsp = { version ="0.4.0", optional = true }
 
 [features]
 default = ["kira"]
