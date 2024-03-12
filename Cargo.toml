@@ -24,15 +24,11 @@ documentation.workspace = true
 readme.workspace = true
 categories.workspace = true
 keywords.workspace = true
-exclude = [
-    "assets",
-]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 bevy = { version = "0.13", default-features = false, features = [
-    "animation",
     "bevy_asset",
     "bevy_gilrs",
     "bevy_scene",
