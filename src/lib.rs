@@ -34,8 +34,10 @@ impl Default for MusicPlugin {
 
 impl Plugin for MusicPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<AudioPlugin>() {
+            app.add_plugins(AudioPlugin);
+        }
         app
-            .add_plugins(AudioPlugin)
             .insert_resource(Clock::new(self.beats, self.note_type, self.bpm))
             .insert_resource(Intensity(0.5))
             .add_event::<Beat>()
