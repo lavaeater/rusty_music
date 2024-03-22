@@ -49,8 +49,8 @@ fn setup(
                        2,
                        4,
                        2));
-    commands.spawn(
-        create_arpeggiator("Arpeggio".to_string(), asset_server.load("samples/lo-fi/construction/120/acid/long/c.wav"), 0.251188643150958));
+    // commands.spawn(
+    //     create_arpeggiator("Arpeggio".to_string(), asset_server.load("samples/lo-fi/construction/120/acid/long/c.wav"), 0.251188643150958));
 
     commands.spawn(
         create_bassist("Bassist".to_string(), asset_server.load("samples/lo-fi/construction/120/bass/c.wav"), 0.7));

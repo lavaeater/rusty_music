@@ -6,6 +6,26 @@ use rand::prelude::IteratorRandom;
 use crate::clock::Beat;
 use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler};
 
+pub struct SuperDrummer {
+    pub drums: Vec<Drummer>
+}
+
+impl SuperDrummer {
+    pub fn new(drums: Vec<Drummer>) -> Self {
+        Self {
+            drums
+        }
+    }
+}
+
+impl MusicPlayer for SuperDrummer {
+    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, _chord: &Chord) {
+        for drummer in self.drums.iter_mut() {
+            drummer.play(beat, audio, base_intensity, _chord);
+        }
+    }
+}
+
 pub struct Drummer {
     pub notes: HashMap<(u32, u32), Note>,
     pub sampler: Sampler,
