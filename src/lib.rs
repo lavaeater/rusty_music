@@ -4,7 +4,7 @@ use bevy::asset::Handle;
 use bevy::utils::HashMap;
 use crate::clock::{Beat, Clock, progress_clock_system};
 use crate::musicians::{Chord, Musician, Note, Sampler};
-use crate::musicians::arpegggiator::Arpeggiator;
+use crate::musicians::arpeggiator::Arpeggiator;
 use crate::musicians::bassist::Bassist;
 use crate::musicians::drummer::Drummer;
 use crate::musicians::soloist::Soloist;

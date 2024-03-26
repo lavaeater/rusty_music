@@ -2,7 +2,7 @@ pub mod drummer;
 pub mod conductor;
 pub mod bassist;
 pub mod soloist;
-pub mod arpegggiator;
+pub mod arpeggiator;
 
 use std::cmp::Ordering;
 use bevy::prelude::{Component, Res};
