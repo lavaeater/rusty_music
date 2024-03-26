@@ -52,6 +52,14 @@ pub fn generate_chords() -> Vec<Chord> {
         Note::new(-2, 1.0),
         Note::new(0, 0.2),
         Note::new(2, 0.6),
+        Note::new(4, 0.5),
+        Note::new(3, 0.5),
+        Note::new(2, 0.5),
+        Note::new(1, 0.5),
+        Note::new(0, 0.5),
+        Note::new(-1, 0.5),
+        Note::new(-2, 0.5),
+        Note::new(-3, 0.5),
         Note::new(-4, 0.5),
         Note::new(8, 0.7),
         Note::new(-4, 0.4),
@@ -62,6 +70,14 @@ pub fn generate_chords() -> Vec<Chord> {
             Note::new(-2, 1.0),
             Note::new(0, 0.2),
             Note::new(2, 0.6),
+            Note::new(4, 0.5),
+            Note::new(3, 0.5),
+            Note::new(2, 0.5),
+            Note::new(1, 0.5),
+            Note::new(0, 0.5),
+            Note::new(-1, 0.5),
+            Note::new(-2, 0.5),
+            Note::new(-3, 0.5),
             Note::new(-4, 0.5),
             Note::new(8, 0.7),
             Note::new(-4, 0.4),
@@ -99,6 +115,16 @@ pub fn create_drummer(name: String, handle: Handle<AudioSource>, volume: f64, dr
             },
             drum_beat,
         ),
+    )
+}
+
+pub fn create_drummer_only(handle: Handle<AudioSource>, volume: f64, drum_beat: HashMap<(u32, u32), Note>) -> Drummer {
+    Drummer::new(
+        Sampler {
+            handle,
+            volume,
+        },
+        drum_beat,
     )
 }
 

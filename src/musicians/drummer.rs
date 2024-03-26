@@ -62,11 +62,11 @@ pub fn generate_kick_beat() -> HashMap<(u32, u32), Note> {
         }),
         ((3, 0), Note {
             midi_note_diff: 0,
-            strength: 0.5,
+            strength: 0.25,
         }),
         ((3, 2), Note {
             midi_note_diff: 0,
-            strength: 0.7,
+            strength: 0.5,
         }),
     ])
 }
@@ -75,11 +75,11 @@ pub fn generate_snare_beat() -> HashMap<(u32, u32), Note> {
     HashMap::from([
         ((0, 0), Note {
             midi_note_diff: 0,
-            strength: 0.5,
+            strength: 0.25,
         }),
         ((2, 0), Note {
             midi_note_diff: 0,
-            strength: 0.5,
+            strength: 0.25,
         })
     ])
 }
@@ -88,19 +88,19 @@ pub fn generate_hihat_beat() -> HashMap<(u32, u32), Note> {
     HashMap::from([
         ((0, 0), Note {
             midi_note_diff: 0,
-            strength: 0.5,
+            strength: 0.25,
         }),
         ((1, 0), Note {
             midi_note_diff: 0,
-            strength: 0.5,
+            strength: 0.25,
         }),
         ((2, 0), Note {
             midi_note_diff: 0,
-            strength: 0.5,
+            strength: 0.25,
         }),
         ((3, 0), Note {
             midi_note_diff: 0,
-            strength: 0.5,
+            strength: 0.25,
         }),
     ])
 }

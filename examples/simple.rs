@@ -1,8 +1,9 @@
 use bevy::DefaultPlugins;
 use bevy::prelude::{App, AssetServer, ButtonInput, Commands, KeyCode, Res, ResMut, Startup, Update};
 use rusty_music::musicians::conductor::Conductor;
-use rusty_music::musicians::drummer::{generate_hihat_beat, generate_kick_beat, generate_snare_beat};
-use rusty_music::{create_arpeggiator, create_bassist, create_drummer, create_soloist, generate_chords, MusicPlugin};
+use rusty_music::musicians::drummer::{generate_hihat_beat, generate_kick_beat, generate_snare_beat, SuperDrummer};
+use rusty_music::{create_arpeggiator, create_bassist, create_drummer, create_drummer_only, create_soloist, generate_chords, MusicPlugin};
+use rusty_music::musicians::Musician;
 use rusty_music::player::Intensity;
 
 fn main() {
@@ -56,14 +57,15 @@ fn setup(
         create_bassist("Bassist".to_string(), asset_server.load("samples/lo-fi/construction/120/bass/c.wav"), 0.7));
 
     commands.spawn(
-        create_drummer("Kick".to_string(), asset_server.load("samples/drums/kit-d/kick.wav"), 1.0, generate_kick_beat())
-    );
-    commands.spawn(
-        create_drummer("Snare".to_string(), asset_server.load("samples/drums/kit-d/snare.wav"), 1.0, generate_snare_beat())
-    );
-
-
-    commands.spawn(create_drummer("Hihat".to_string(), asset_server.load("samples/drums/kit-d/hihat.wav"), 1.0, generate_hihat_beat()));
+        Musician::new(
+            "Drummer".to_string(),
+            SuperDrummer::new(
+                vec![
+                    create_drummer_only(asset_server.load("samples/drums/kick.wav"), 1.0, generate_kick_beat()),
+                    create_drummer_only(asset_server.load("samples/drums/snare.wav"), 1.0, generate_snare_beat()),
+                    create_drummer_only(asset_server.load("samples/drums/hihat.wav"), 1.0, generate_hihat_beat()),
+                ]
+            )));
 
     commands.insert_resource(Conductor {
         chords: generate_chords()
