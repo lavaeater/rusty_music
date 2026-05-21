@@ -81,7 +81,7 @@ impl TonalPlayer {
         notes
             .iter()
             .filter(|n| n.strength >= min_strength)
-            .choose(&mut rand::thread_rng())
+            .choose(&mut rand::rng())
     }
 
     pub fn get_chord_note(chord: &Chord, min_strength: f32) -> Option<Note> {

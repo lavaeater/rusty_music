@@ -1,7 +1,6 @@
 use bevy::prelude::Res;
 use bevy_kira_audio::{Audio, AudioControl};
-use bevy_kira_audio::prelude::Volume;
-use rand::Rng;
+use bevy_kira_audio::prelude::Decibels;
 use crate::clock::Beat;
 use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler, TonalPlayer};
 
@@ -16,8 +15,8 @@ impl Bassist {
 
     fn play_note(&self, note: Note, audio: &Res<Audio>) {
         audio
-            .play(self.sampler.handle.clone_weak())
-            .with_volume(Volume::from(self.sampler.volume))
+            .play(self.sampler.handle.clone())
+            .with_volume(Decibels(self.sampler.volume as f32))
             .with_playback_rate(midi_diff_to_pitch(note.midi_note_diff));
     }
 }
@@ -36,7 +35,7 @@ impl MusicPlayer for Bassist {
 
         if step % 4 == 0 {
             // Quarter beats: play strong chord tone probabilistically.
-            if rand::thread_rng().gen::<f32>() < base_intensity {
+            if rand::random::<f32>() < base_intensity {
                 if let Some(note) = TonalPlayer::get_chord_note(chord, 0.5) {
                     self.play_note(note, audio);
                 }
@@ -46,7 +45,7 @@ impl MusicPlayer for Bassist {
 
         if step % 2 == 0 {
             // 8th-note offbeats: play at moderate probability.
-            if rand::thread_rng().gen::<f32>() < base_intensity - 0.25 {
+            if rand::random::<f32>() < base_intensity - 0.25 {
                 if let Some(note) = TonalPlayer::get_chord_note(chord, 0.25) {
                     self.play_note(note, audio);
                 }
@@ -55,7 +54,7 @@ impl MusicPlayer for Bassist {
         }
 
         // 16th-note positions: play only at high intensity.
-        if rand::thread_rng().gen::<f32>() < base_intensity - 0.5 {
+        if rand::random::<f32>() < base_intensity - 0.5 {
             if let Some(note) = TonalPlayer::get_chord_note(chord, 0.0) {
                 self.play_note(note, audio);
             }

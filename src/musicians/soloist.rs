@@ -1,7 +1,6 @@
 use bevy::prelude::Res;
 use bevy_kira_audio::{Audio, AudioControl};
-use bevy_kira_audio::prelude::Volume;
-use rand::Rng;
+use bevy_kira_audio::prelude::Decibels;
 use crate::clock::Beat;
 use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler, TonalPlayer, STEPS_PER_BAR};
 
@@ -32,8 +31,8 @@ impl Soloist {
 
     fn play_note(&self, note: Note, audio: &Res<Audio>) {
         audio
-            .play(self.sampler.handle.clone_weak())
-            .with_volume(Volume::from(self.sampler.volume))
+            .play(self.sampler.handle.clone())
+            .with_volume(Decibels(self.sampler.volume as f32))
             .with_playback_rate(midi_diff_to_pitch(note.midi_note_diff));
     }
 
@@ -45,27 +44,26 @@ impl Soloist {
     }
 
     fn generate_note(step: u32, chord: &Chord, intensity: f32) -> Option<Note> {
-        let mut rng = rand::thread_rng();
         if step == 0 {
             // Downbeat of every bar: always play a strong scale tone.
             TonalPlayer::get_scale_note(chord, 1.0)
         } else if step % 4 == 0 {
             // Quarter beats: play with probability ~ intensity.
-            if rng.gen::<f32>() < intensity {
+            if rand::random::<f32>() < intensity {
                 TonalPlayer::get_scale_note(chord, 0.5)
             } else {
                 None
             }
         } else if step % 2 == 0 {
             // 8th-note positions.
-            if rng.gen::<f32>() < intensity - 0.25 {
+            if rand::random::<f32>() < intensity - 0.25 {
                 TonalPlayer::get_scale_note(chord, 0.25)
             } else {
                 None
             }
         } else {
             // 16th-note positions: only at high intensity.
-            if rng.gen::<f32>() < intensity - 0.5 {
+            if rand::random::<f32>() < intensity - 0.5 {
                 TonalPlayer::get_scale_note(chord, 0.0)
             } else {
                 None

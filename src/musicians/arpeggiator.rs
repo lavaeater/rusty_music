@@ -1,7 +1,6 @@
 use bevy::prelude::Res;
-use rand::Rng;
 use bevy_kira_audio::{Audio, AudioControl};
-use bevy_kira_audio::prelude::Volume;
+use bevy_kira_audio::prelude::Decibels;
 use crate::clock::Beat;
 use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Sampler};
 
@@ -61,13 +60,13 @@ impl MusicPlayer for Arpeggiator {
                 self.some_index = (self.some_index + 1) % chord_note_length;
                 chord_note_length - (self.some_index + 1)
             }
-            ArpeggioMode::Random => rand::thread_rng().gen_range(0..chord_note_length),
+            ArpeggioMode::Random => rand::random_range(0u32..chord_note_length),
         };
 
         if let Some(note) = chord.chord_notes.get(note_index as usize) {
             audio
-                .play(self.sampler.handle.clone_weak())
-                .with_volume(Volume::from(self.sampler.volume))
+                .play(self.sampler.handle.clone())
+                .with_volume(Decibels(self.sampler.volume as f32))
                 .with_playback_rate(midi_diff_to_pitch(note.midi_note_diff));
         }
     }
@@ -117,7 +116,7 @@ mod tests {
 
     #[test]
     fn does_not_fire_before_next_sixteenth() {
-        let wait = wait_for(0.5); // 2
+        let _wait = wait_for(0.5); // 2
         let next_sixteenth: u32 = 10;
         // sixteenth_count < next_sixteenth → skip
         assert!(9 < next_sixteenth);

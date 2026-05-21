@@ -1,4 +1,4 @@
-use bevy::prelude::{EventReader, Query, Res, Resource};
+use bevy::prelude::{MessageReader, Query, Res, Resource};
 use bevy_kira_audio::Audio;
 use crate::clock::Beat;
 use crate::musicians::Musician;
@@ -8,7 +8,7 @@ use crate::musicians::conductor::Conductor;
 pub struct Intensity(pub f32);
 
 pub fn play_sound_on_the_beat(
-    mut beat_reader: EventReader<Beat>,
+    mut beat_reader: MessageReader<Beat>,
     audio: Res<Audio>,
     conductor: Res<Conductor>,
     intensity: Res<Intensity>,

@@ -1,7 +1,7 @@
 use bevy::prelude::Res;
-use bevy::utils::HashMap;
+use std::collections::HashMap;
 use bevy_kira_audio::{Audio, AudioControl};
-use bevy_kira_audio::prelude::Volume;
+use bevy_kira_audio::prelude::Decibels;
 use rand::seq::IteratorRandom;
 use crate::clock::Beat;
 use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler};
@@ -46,11 +46,11 @@ impl MusicPlayer for Drummer {
             .filter(|(k, v)| {
                 k.0 == beat.beat && k.1 == beat.sixteenth && v.strength >= min_strength
             })
-            .choose(&mut rand::thread_rng())
+            .choose(&mut rand::rng())
         {
             audio
-                .play(self.sampler.handle.clone_weak())
-                .with_volume(Volume::from(self.sampler.volume))
+                .play(self.sampler.handle.clone())
+                .with_volume(Decibels(self.sampler.volume as f32))
                 .with_playback_rate(midi_diff_to_pitch(note_to_play.1.midi_note_diff));
         }
     }
