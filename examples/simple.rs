@@ -2,7 +2,7 @@ use bevy::DefaultPlugins;
 use bevy::prelude::{App, AssetServer, ButtonInput, Commands, KeyCode, Res, ResMut, Startup, Update};
 use rusty_music::musicians::conductor::Conductor;
 use rusty_music::musicians::drummer::{generate_hihat_beat, generate_kick_beat, generate_snare_beat, SuperDrummer};
-use rusty_music::{create_arpeggiator, create_bassist, create_drummer, create_drummer_only, create_soloist, generate_chords, MusicPlugin};
+use rusty_music::{create_bassist, create_drummer_only, create_soloist, generate_chords, MusicPlugin};
 use rusty_music::musicians::Musician;
 use rusty_music::player::Intensity;
 
@@ -44,30 +44,33 @@ fn setup(
     asset_server: Res<AssetServer>,
 ) {
     commands.spawn(
-        create_soloist("Melody".to_string(),
-                       asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
-                       0.251188643150958,
-                       2,
-                       4,
-                       2));
-    // commands.spawn(
-    //     create_arpeggiator("Arpeggio".to_string(), asset_server.load("samples/lo-fi/construction/120/acid/long/c.wav"), 0.251188643150958));
+        create_soloist(
+            "Melody".to_string(),
+            asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
+            0.251188643150958,
+            2,  // record_bars
+            2,  // repeats
+        ));
 
     commands.spawn(
-        create_bassist("Bassist".to_string(), asset_server.load("samples/lo-fi/construction/120/bass/c.wav"), 0.7));
+        create_bassist(
+            "Bassist".to_string(),
+            asset_server.load("samples/lo-fi/construction/120/bass/c.wav"),
+            0.7,
+        ));
 
     commands.spawn(
         Musician::new(
             "Drummer".to_string(),
-            SuperDrummer::new(
-                vec![
-                    create_drummer_only(asset_server.load("samples/drums/kick.wav"), 1.0, generate_kick_beat()),
-                    create_drummer_only(asset_server.load("samples/drums/snare.wav"), 1.0, generate_snare_beat()),
-                    create_drummer_only(asset_server.load("samples/drums/hihat.wav"), 1.0, generate_hihat_beat()),
-                ]
-            )));
+            SuperDrummer::new(vec![
+                create_drummer_only(asset_server.load("samples/drums/kick.wav"), 1.0, generate_kick_beat()),
+                create_drummer_only(asset_server.load("samples/drums/snare.wav"), 1.0, generate_snare_beat()),
+                create_drummer_only(asset_server.load("samples/drums/hihat.wav"), 1.0, generate_hihat_beat()),
+            ]),
+        ));
 
     commands.insert_resource(Conductor {
-        chords: generate_chords()
+        chords: generate_chords(),
+        chord_length_bars: 4.0,
     });
 }

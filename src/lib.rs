@@ -6,6 +6,7 @@ use crate::clock::{Beat, Clock, progress_clock_system};
 use crate::musicians::{Chord, Musician, Note, Sampler};
 use crate::musicians::arpeggiator::Arpeggiator;
 use crate::musicians::bassist::Bassist;
+use crate::musicians::conductor::Conductor;
 use crate::musicians::drummer::Drummer;
 use crate::musicians::soloist::Soloist;
 use crate::player::{Intensity, play_sound_on_the_beat};
@@ -66,7 +67,7 @@ pub fn generate_chords() -> Vec<Chord> {
         Note::new(3, 0.1),
     ];
     vec![
-        Chord::new(0, vec![
+        Chord::new(0.0, vec![
             Note::new(-2, 1.0),
             Note::new(0, 0.2),
             Note::new(2, 0.6),
@@ -83,7 +84,7 @@ pub fn generate_chords() -> Vec<Chord> {
             Note::new(-4, 0.4),
             Note::new(3, 0.1),
         ], scale_notes.clone()),
-        Chord::new(1, vec![
+        Chord::new(1.0, vec![
             Note::new(-2, 1.0),
             Note::new(4, 0.5),
             Note::new(3, 0.5),
@@ -96,7 +97,7 @@ pub fn generate_chords() -> Vec<Chord> {
             Note::new(-4, 0.5),
             Note::new(3, 0.1),
         ], scale_notes.clone()),
-        Chord::new(2, vec![
+        Chord::new(2.0, vec![
             Note::new(-1, 1.0),
             Note::new(2, 0.7),
             Note::new(4, 0.5),
@@ -110,7 +111,7 @@ pub fn generate_chords() -> Vec<Chord> {
             Note::new(-4, 0.5),
             Note::new(-2, 0.4),
         ], scale_notes.clone()),
-        Chord::new(3, vec![
+        Chord::new(3.0, vec![
             Note::new(-2, 1.0),
             Note::new(0, 0.2),
             Note::new(2, 0.6),
@@ -130,56 +131,63 @@ pub fn generate_chords() -> Vec<Chord> {
     ]
 }
 
-pub fn create_drummer(name: String, handle: Handle<AudioSource>, volume: f64, drum_beat: HashMap<(u32, u32), Note>) -> Musician {
+pub fn create_drummer(
+    name: String,
+    handle: Handle<AudioSource>,
+    volume: f64,
+    drum_beat: HashMap<(u32, u32), Note>,
+) -> Musician {
     Musician::new(
         name,
-        Drummer::new(
-            Sampler {
-                handle,
-                volume,
-            },
-            drum_beat,
-        ),
+        Drummer::new(Sampler { handle, volume }, drum_beat),
     )
 }
 
-pub fn create_drummer_only(handle: Handle<AudioSource>, volume: f64, drum_beat: HashMap<(u32, u32), Note>) -> Drummer {
-    Drummer::new(
-        Sampler {
-            handle,
-            volume,
-        },
-        drum_beat,
+pub fn create_drummer_only(
+    handle: Handle<AudioSource>,
+    volume: f64,
+    drum_beat: HashMap<(u32, u32), Note>,
+) -> Drummer {
+    Drummer::new(Sampler { handle, volume }, drum_beat)
+}
+
+pub fn create_arpeggiator(
+    name: String,
+    handle: Handle<AudioSource>,
+    volume: f64,
+) -> Musician {
+    Musician::new(
+        name,
+        Arpeggiator::new(Sampler { handle, volume }),
     )
 }
 
-pub fn create_arpeggiator(name: String, handle: Handle<AudioSource>, volume: f64) -> Musician {
+pub fn create_soloist(
+    name: String,
+    handle: Handle<AudioSource>,
+    volume: f64,
+    record_bars: u32,
+    repeats: u32,
+) -> Musician {
     Musician::new(
         name,
-        Arpeggiator::new(Sampler {
-            handle,
-            volume,
-        }),
+        Soloist::new(Sampler { handle, volume }, record_bars, repeats),
     )
 }
 
-pub fn create_soloist(name: String, handle: Handle<AudioSource>, volume: f64, record_bars: u32, beats_per_bar: u32, repeats: u32) -> Musician {
+pub fn create_bassist(
+    name: String,
+    handle: Handle<AudioSource>,
+    volume: f64,
+) -> Musician {
     Musician::new(
         name,
-        Soloist::new(Sampler {
-            handle,
-            volume,
-        }, record_bars, beats_per_bar, repeats),
+        Bassist::new(Sampler { handle, volume }),
     )
 }
 
-
-pub fn create_bassist(name: String, handle: Handle<AudioSource>, volume: f64) -> Musician {
-    Musician::new(
-        name,
-        Bassist::new(Sampler {
-            handle,
-            volume,
-        }),
-    )
+/// Build a `Conductor` from the given chords. `chord_length_bars` is the
+/// total bar length of the progression before it loops.
+pub fn make_conductor(chords: Vec<Chord>, chord_length_bars: f32) -> Conductor {
+    Conductor { chords, chord_length_bars }
 }
