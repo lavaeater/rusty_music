@@ -85,6 +85,9 @@ pub struct Beat {
     pub sixteenth_count: u32,
     /// Fractional bar position at the moment this beat fired.
     pub time_bars: f32,
+    /// Seconds by which this beat fired late (frame overshoot past the ideal beat boundary).
+    /// Used to back-schedule audio playback to the exact beat time.
+    pub overshoot: f32,
 }
 
 impl Beat {
@@ -96,6 +99,7 @@ impl Beat {
         beat_count: u32,
         sixteenth_count: u32,
         time_bars: f32,
+        overshoot: f32,
     ) -> Self {
         Self {
             elapsed_time,
@@ -105,6 +109,7 @@ impl Beat {
             beat_count,
             sixteenth_count,
             time_bars,
+            overshoot,
         }
     }
 }
@@ -124,6 +129,7 @@ pub fn progress_clock_system(
             clock.beat_count,
             clock.sixteenth_count,
             time_bars,
+            clock.accumulator,
         ));
     }
 }

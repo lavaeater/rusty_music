@@ -173,17 +173,17 @@ The current mapping treats `(beat, sixteenth)` as a 2-level grid where `sixteent
 
 ## 5. Suggested Implementation Order
 
-1. **Fix clock accumulator** (§1.1) — trivial one-line fix with broad timing impact.
-2. **Fix drummer data / strength polarity** (§1.3) — decide on a convention and update both the filter and the beat data to match.
-3. **Fix arpeggiator step-size** (§1.2) — straightforward logic correction.
-4. **Fix soloist pre-allocation and panic** (§1.4) — correctness fix.
-5. **Implement `TonalMusician` helpers** (§2.3) — enables cleaner fixes for bassist and soloist.
-6. **Fix bassist note selection** (§3.1) — bring it in line with the book.
-7. **Fix soloist note-selection grid** (§3.2) — align 16th-position logic with book.
-8. **Add `chord_length_bars` to Conductor** (§2.2) — enables multi-bar chords.
-9. **Add scheduled note timing** (§2.1) — requires clock `bars_to_engine_time` and kira scheduling.
+1. ✅ **Fix clock accumulator** (§1.1)
+2. ✅ **Fix drummer data / strength polarity** (§1.3)
+3. ✅ **Fix arpeggiator step-size** (§1.2)
+4. ✅ **Fix soloist pre-allocation and panic** (§1.4)
+5. ✅ **Implement `TonalMusician` helpers** (§2.3)
+6. ✅ **Fix bassist note selection** (§3.1)
+7. ✅ **Fix soloist note-selection grid** (§3.2)
+8. ✅ **Add `chord_length_bars` to Conductor** (§2.2)
+9. ✅ **Add scheduled note timing** (§2.1) — `Beat.overshoot` captures frame jitter; each musician schedules via `AudioEvents::play_at`.
 10. **Drummer fills and time-feel switching** (§4.1).
 11. **Bassist scale embellishments + memory** (§4.2).
 12. **Additional arpeggio modes** (§4.3).
 13. **AABA soloist form** (§4.5).
-14. **Clean up or implement `macros/`** (§1.5).
+14. ✅ **Clean up or implement `macros/`** (§1.5).
