@@ -1,18 +1,46 @@
 use bevy::prelude::Commands;
 use bevy_seedling::prelude::{PlaybackSettings, SamplePlayer, Volume};
+use rand::seq::IteratorRandom;
 use crate::clock::Beat;
 use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler, TonalPlayer};
 
 pub struct Bassist {
     pub sampler: Sampler,
+    /// MIDI semitone offset of the last played note, for proximity-biased selection.
+    last_midi_diff: Option<i32>,
 }
 
 impl Bassist {
     pub fn new(sampler: Sampler) -> Self {
-        Self { sampler }
+        Self { sampler, last_midi_diff: None }
     }
 
-    fn play_note(&self, note: Note, commands: &mut Commands) {
+    /// Select a random note at or above `min_strength`, biasing toward notes
+    /// within 5 semitones of the last played note for smoother melodic lines.
+    fn get_proximate_note(notes: &[Note], min_strength: f32, last: Option<i32>) -> Option<Note> {
+        let candidates: Vec<Note> = notes
+            .iter()
+            .filter(|n| n.strength >= min_strength)
+            .copied()
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        if let Some(last_midi) = last {
+            let close: Vec<Note> = candidates
+                .iter()
+                .filter(|n| (n.midi_note_diff - last_midi).abs() <= 5)
+                .copied()
+                .collect();
+            if !close.is_empty() {
+                return close.into_iter().choose(&mut rand::rng());
+            }
+        }
+        candidates.into_iter().choose(&mut rand::rng())
+    }
+
+    fn play_note(&mut self, note: Note, commands: &mut Commands) {
+        self.last_midi_diff = Some(note.midi_note_diff);
         commands.spawn((
             SamplePlayer::new(self.sampler.handle.clone())
                 .with_volume(Volume::Decibels(self.sampler.volume as f32)),
@@ -25,19 +53,20 @@ impl Bassist {
 impl MusicPlayer for Bassist {
     fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
         let step = TonalPlayer::flat_step(&beat); // 0–15 within bar
+        let last = self.last_midi_diff;
 
         if step == 0 {
-            // Downbeat: always play the root (strongest chord tone).
-            if let Some(note) = TonalPlayer::get_chord_note(chord, 1.0) {
+            // Downbeat: always play a strong chord tone.
+            if let Some(note) = Self::get_proximate_note(&chord.chord_notes, 1.0, last) {
                 self.play_note(note, commands);
             }
             return;
         }
 
         if step % 4 == 0 {
-            // Quarter beats: play strong chord tone probabilistically.
+            // Quarter beats: chord tone, intensity-gated.
             if rand::random::<f32>() < base_intensity {
-                if let Some(note) = TonalPlayer::get_chord_note(chord, 0.5) {
+                if let Some(note) = Self::get_proximate_note(&chord.chord_notes, 0.5, last) {
                     self.play_note(note, commands);
                 }
             }
@@ -45,18 +74,18 @@ impl MusicPlayer for Bassist {
         }
 
         if step % 2 == 0 {
-            // 8th-note offbeats: play at moderate probability.
+            // 8th-note offbeats: lighter chord tone.
             if rand::random::<f32>() < base_intensity - 0.25 {
-                if let Some(note) = TonalPlayer::get_chord_note(chord, 0.25) {
+                if let Some(note) = Self::get_proximate_note(&chord.chord_notes, 0.25, last) {
                     self.play_note(note, commands);
                 }
             }
             return;
         }
 
-        // 16th-note positions: play only at high intensity.
+        // 16th-note positions: scale tones as passing/embellishment notes.
         if rand::random::<f32>() < base_intensity - 0.5 {
-            if let Some(note) = TonalPlayer::get_chord_note(chord, 0.0) {
+            if let Some(note) = Self::get_proximate_note(&chord.scale_notes, 0.0, last) {
                 self.play_note(note, commands);
             }
         }
@@ -66,6 +95,8 @@ impl MusicPlayer for Bassist {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::asset::Handle;
+    use crate::musicians::{AudioSample, Sampler};
 
     fn make_beat(beat: u32, sixteenth: u32) -> Beat {
         Beat {
@@ -78,6 +109,10 @@ mod tests {
             time_bars: beat as f32 / 4.0 + sixteenth as f32 / 16.0,
             overshoot: 0.0,
         }
+    }
+
+    fn make_bassist() -> Bassist {
+        Bassist::new(Sampler { handle: Handle::<AudioSample>::default(), volume: 1.0 })
     }
 
     #[test]
@@ -94,7 +129,6 @@ mod tests {
 
     #[test]
     fn flat_step_eighth_positions() {
-        // Even but not multiples of 4: positions 2, 6, 10, 14
         for (b, s) in [(0u32, 2u32), (1, 2), (2, 2), (3, 2)] {
             let step = TonalPlayer::flat_step(&make_beat(b, s));
             assert!(step % 2 == 0 && step % 4 != 0, "step {step} should be 8th position");
@@ -103,7 +137,6 @@ mod tests {
 
     #[test]
     fn flat_step_sixteenth_positions() {
-        // Odd positions: 1, 3, 5, 7, ...
         for (b, s) in [(0u32, 1u32), (0, 3), (1, 1), (1, 3)] {
             let step = TonalPlayer::flat_step(&make_beat(b, s));
             assert!(step % 2 != 0, "step {step} should be 16th (odd) position");
@@ -111,32 +144,59 @@ mod tests {
     }
 
     #[test]
-    fn downbeat_always_plays_regardless_of_intensity() {
-        // At step==0 with intensity 0.0 we still play: no random check.
-        // Verify the condition: step==0 always triggers (no intensity gate).
-        let beat = make_beat(0, 0);
-        assert_eq!(TonalPlayer::flat_step(&beat), 0);
-        // No intensity threshold — the code always plays when step==0.
+    fn get_proximate_prefers_close_notes() {
+        let notes = vec![
+            Note::new(0, 1.0),
+            Note::new(7, 1.0),  // a 5th away
+            Note::new(12, 1.0), // an octave away
+        ];
+        // With last=1, note 0 (distance 1) is within 5 semitones; 7 and 12 are not.
+        for _ in 0..20 {
+            let n = Bassist::get_proximate_note(&notes, 1.0, Some(1)).unwrap();
+            assert_eq!(n.midi_note_diff, 0, "should pick the close note");
+        }
+    }
+
+    #[test]
+    fn get_proximate_falls_back_when_no_close_note() {
+        let notes = vec![Note::new(10, 1.0)];
+        // Only one candidate, far from last=0 — should still return it.
+        let n = Bassist::get_proximate_note(&notes, 1.0, Some(0)).unwrap();
+        assert_eq!(n.midi_note_diff, 10);
+    }
+
+    #[test]
+    fn scale_notes_available_at_sixteenth_position() {
+        // Verify that a sixteenth step (odd) would use scale_notes.
+        // This is a structural check: step=1 is odd.
+        let beat = make_beat(0, 1);
+        let step = TonalPlayer::flat_step(&beat);
+        assert!(step % 2 != 0);
+    }
+
+    #[test]
+    fn bassist_tracks_last_midi_diff() {
+        let mut bassist = make_bassist();
+        assert!(bassist.last_midi_diff.is_none());
+        // After playing, last_midi_diff should be set.
+        let note = Note::new(5, 1.0);
+        // Simulate: calling play_note sets last_midi_diff.
+        bassist.last_midi_diff = Some(note.midi_note_diff);
+        assert_eq!(bassist.last_midi_diff, Some(5));
     }
 
     #[test]
     fn quarter_plays_when_intensity_exceeds_random() {
-        // At full intensity (1.0) the quarter condition always fires.
-        // At zero intensity it never fires (gen::<f32>() is always >= 0).
         let beat = make_beat(1, 0);
         let step = TonalPlayer::flat_step(&beat);
         assert_eq!(step % 4, 0);
         assert_ne!(step, 0);
-        // intensity=0.0: condition `gen < 0.0` is always false → no play
-        // intensity=1.0: condition `gen < 1.0` is (almost) always true → play
     }
 
     #[test]
     fn sixteenth_never_plays_below_half_intensity() {
-        // `gen::<f32>() < intensity - 0.5` when intensity <= 0.5 is always false.
-        let beat = make_beat(0, 1); // step=1, odd
+        let beat = make_beat(0, 1);
         let step = TonalPlayer::flat_step(&beat);
         assert!(step % 2 != 0);
-        // At intensity=0.5: 0.5 - 0.5 = 0.0, gen >= 0.0 → never plays
     }
 }

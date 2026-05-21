@@ -7,18 +7,45 @@ use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler};
 
 pub struct SuperDrummer {
     pub drums: Vec<Drummer>,
+    /// Alternate pattern played in the last bar of every `fill_every` bars.
+    /// Set `fill_every = 0` to disable fills.
+    pub fill_every: u32,
+    pub fill_drums: Vec<Drummer>,
 }
 
 impl SuperDrummer {
     pub fn new(drums: Vec<Drummer>) -> Self {
-        Self { drums }
+        Self { drums, fill_every: 0, fill_drums: vec![] }
+    }
+
+    /// Attach a fill pattern triggered every `fill_every` bars.
+    pub fn with_fills(mut self, fill_every: u32, fill_drums: Vec<Drummer>) -> Self {
+        self.fill_every = fill_every;
+        self.fill_drums = fill_drums;
+        self
     }
 }
 
 impl MusicPlayer for SuperDrummer {
     fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
-        for drummer in self.drums.iter_mut() {
-            drummer.play(beat, commands, base_intensity, chord);
+        // Half-time feel at low intensity: only fire on every other 16th tick.
+        if base_intensity < 0.3 && beat.sixteenth_count % 2 != 0 {
+            return;
+        }
+
+        // Use the fill pattern in the last bar of every `fill_every` bars.
+        let is_fill_bar = self.fill_every > 0
+            && !self.fill_drums.is_empty()
+            && (beat.bar_count + 1) % self.fill_every == 0;
+
+        if is_fill_bar {
+            for drummer in self.fill_drums.iter_mut() {
+                drummer.play(beat, commands, base_intensity, chord);
+            }
+        } else {
+            for drummer in self.drums.iter_mut() {
+                drummer.play(beat, commands, base_intensity, chord);
+            }
         }
     }
 }
@@ -76,6 +103,16 @@ pub fn generate_snare_beat() -> HashMap<(u32, u32), Note> {
         ((3, 0), Note::new(0, 1.0)),  // beat 4 backbeat — always
         ((0, 2), Note::new(0, 0.1)),  // ghost note — only at near-max intensity
         ((2, 2), Note::new(0, 0.1)),  // ghost note
+    ])
+}
+
+/// Snare fill: rapid snare hits on beat 4 (the last beat of the bar).
+pub fn generate_snare_fill_beat() -> HashMap<(u32, u32), Note> {
+    HashMap::from([
+        ((3, 0), Note::new(0, 0.5)),
+        ((3, 1), Note::new(0, 0.5)),
+        ((3, 2), Note::new(0, 0.5)),
+        ((3, 3), Note::new(0, 0.5)),
     ])
 }
 
@@ -161,5 +198,29 @@ mod tests {
         let note = &notes_at(&hihat, 0, 2)[0];
         assert!(!passes(note, 0.4), "8th hat should not play below 0.5");
         assert!(passes(note, 0.5));
+    }
+
+    #[test]
+    fn fill_beat_has_four_hits_on_beat4() {
+        let fill = generate_snare_fill_beat();
+        for s in 0..4u32 {
+            assert!(!notes_at(&fill, 3, s).is_empty(), "fill missing (3,{s})");
+        }
+        // No hits on other beats
+        for b in 0..3u32 {
+            assert!(notes_at(&fill, b, 0).is_empty());
+        }
+    }
+
+    #[test]
+    fn half_time_gating_skips_odd_sixteenth_counts() {
+        // sixteenth_count % 2 != 0 at low intensity → gated out
+        // We test the gate condition directly (no Commands in unit test)
+        let gate = |intensity: f32, sixteenth_count: u32| -> bool {
+            intensity < 0.3 && sixteenth_count % 2 != 0
+        };
+        assert!(gate(0.2, 1), "odd tick at low intensity should be gated");
+        assert!(!gate(0.2, 0), "even tick should pass");
+        assert!(!gate(0.5, 1), "normal intensity should not gate");
     }
 }

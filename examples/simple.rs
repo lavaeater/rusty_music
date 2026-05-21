@@ -49,8 +49,7 @@ fn setup(
             "Melody".to_string(),
             asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
             0.251188643150958,
-            2,  // record_bars
-            2,  // repeats
+            2,  // record_bars (AABA sections are each 2 bars)
         ));
 
     commands.spawn(

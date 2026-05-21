@@ -52,8 +52,7 @@ fn setup(
                 handle: asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
                 volume: 0.251188643150958,
             },
-            4,  // record_bars
-            2,  // repeats
+            4,  // record_bars (AABA sections are each 4 bars)
         ),
     ));
 

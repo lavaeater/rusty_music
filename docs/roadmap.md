@@ -182,8 +182,8 @@ The current mapping treats `(beat, sixteenth)` as a 2-level grid where `sixteent
 7. ✅ **Fix soloist note-selection grid** (§3.2)
 8. ✅ **Add `chord_length_bars` to Conductor** (§2.2)
 9. ✅ **Add scheduled note timing** (§2.1) — `Beat.overshoot` captures frame jitter. Per-note `play_at` scheduling was attempted but floods Firewheel's message channel at higher intensities. Long-term drift is prevented by the accumulator fix (§1.1); per-note ECS jitter (~8ms) is imperceptible in game music.
-10. **Drummer fills and time-feel switching** (§4.1).
-11. **Bassist scale embellishments + memory** (§4.2).
-12. **Additional arpeggio modes** (§4.3).
-13. **AABA soloist form** (§4.5).
+10. ✅ **Drummer fills and time-feel switching** (§4.1) — `SuperDrummer::with_fills(n, fill_drums)` plays an alternate pattern in the last bar of every N bars; `generate_snare_fill_beat()` provided; half-time gating at `intensity < 0.3` halves rhythmic density.
+11. ✅ **Bassist scale embellishments + memory** (§4.2) — 16th positions now use scale tones (passing notes) instead of chord tones; `last_midi_diff` tracking biases note selection toward notes within 5 semitones of the last played note for smoother melodic lines.
+12. ✅ **Additional arpeggio modes** (§4.3) — `Down` fixed; `PingPong` added (0→1→2→3→2→1→...); `Auto` mode selects Up/PingPong/Random by intensity; default mode is now `Auto`.
+13. ✅ **AABA soloist form** (§4.5) — `AabaPhase` state machine (`RecordA → PlayA1 → PlayA2 → RecordB → PlayA3 → RecordA`); A melody recorded once and replayed in positions 1, 2, 4; B section freshly generated each cycle; `Soloist::new` now takes `(sampler, record_bars)`.
 14. ✅ **Clean up or implement `macros/`** (§1.5).

@@ -165,11 +165,10 @@ pub fn create_soloist(
     handle: Handle<AudioSample>,
     volume: f64,
     record_bars: u32,
-    repeats: u32,
 ) -> Musician {
     Musician::new(
         name,
-        Soloist::new(Sampler { handle, volume }, record_bars, repeats),
+        Soloist::new(Sampler { handle, volume }, record_bars),
     )
 }
 
