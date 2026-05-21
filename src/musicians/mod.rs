@@ -161,8 +161,9 @@ mod tests {
     #[test]
     fn get_note_only_essential_at_zero_intensity() {
         // min_strength = 1.0 - 0.0 = 1.0
+        let notes = scale_notes();
         for _ in 0..20 {
-            let n = TonalPlayer::get_note(&scale_notes(), 1.0).unwrap();
+            let n = TonalPlayer::get_note(&notes, 1.0).unwrap();
             assert_eq!(n.strength, 1.0);
         }
     }

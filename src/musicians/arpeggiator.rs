@@ -75,8 +75,6 @@ impl MusicPlayer for Arpeggiator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     fn wait_for(intensity: f32) -> u32 {
         if intensity < 0.4 { 4 } else if intensity < 0.7 { 2 } else { 1 }
     }
@@ -108,8 +106,7 @@ mod tests {
     #[test]
     fn next_sixteenth_advances_by_wait() {
         // Simulate firing logic: next_sixteenth is set to current + wait
-        let intensity = 0.5; // wait=2
-        let wait = wait_for(intensity);
+        let wait: u32 = wait_for(0.5); // mid intensity → 2 ticks
         let mut next_sixteenth: u32 = 0;
         let current: u32 = 5;
         if current >= next_sixteenth {
