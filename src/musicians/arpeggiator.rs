@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn does_not_fire_before_next_sixteenth() {
-        let wait = wait_for(0.5); // 2
+        let _wait = wait_for(0.5); // 2
         let next_sixteenth: u32 = 10;
         // sixteenth_count < next_sixteenth → skip
         assert!(9 < next_sixteenth);

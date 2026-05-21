@@ -1,5 +1,6 @@
 use bevy::DefaultPlugins;
-use bevy::prelude::{App, AssetServer, ButtonInput, Commands, KeyCode, Res, ResMut, Startup, Update};
+use bevy::prelude::*;
+use bevy::input::keyboard::KeyCode;
 use rusty_music::musicians::conductor::Conductor;
 use rusty_music::musicians::drummer::{generate_hihat_beat, generate_kick_beat, generate_snare_beat, SuperDrummer};
 use rusty_music::{create_bassist, create_drummer_only, create_soloist, generate_chords, MusicPlugin};
