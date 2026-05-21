@@ -1,6 +1,6 @@
-use bevy::prelude::{Commands, Time};
+use bevy::prelude::Commands;
 use std::collections::HashMap;
-use bevy_seedling::prelude::{Audio, AudioEvents, InstantSeconds, PlaybackSettings, SamplePlayer, Volume};
+use bevy_seedling::prelude::{PlaybackSettings, SamplePlayer, Volume};
 use rand::seq::IteratorRandom;
 use crate::clock::Beat;
 use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler};
@@ -16,9 +16,9 @@ impl SuperDrummer {
 }
 
 impl MusicPlayer for SuperDrummer {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord, audio_time: &Time<Audio>, scheduled_at: InstantSeconds) {
+    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
         for drummer in self.drums.iter_mut() {
-            drummer.play(beat, commands, base_intensity, chord, audio_time, scheduled_at);
+            drummer.play(beat, commands, base_intensity, chord);
         }
     }
 }
@@ -35,7 +35,7 @@ impl Drummer {
 }
 
 impl MusicPlayer for Drummer {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord, audio_time: &Time<Audio>, scheduled_at: InstantSeconds) {
+    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
         // A note plays when its strength >= (1.0 - intensity):
         // strength=1.0 → always plays; strength=0.0 → only at full intensity.
         let min_strength = 1.0 - base_intensity;
@@ -47,16 +47,11 @@ impl MusicPlayer for Drummer {
             })
             .choose(&mut rand::rng())
         {
-            let mut events = AudioEvents::new(audio_time);
-            let settings = PlaybackSettings::default()
-                .with_playback(false)
-                .with_speed(midi_diff_to_pitch(note_to_play.1.midi_note_diff));
-            settings.play_at(None, scheduled_at, &mut events);
             commands.spawn((
                 SamplePlayer::new(self.sampler.handle.clone())
                     .with_volume(Volume::Decibels(self.sampler.volume as f32)),
-                settings,
-                events,
+                PlaybackSettings::default()
+                    .with_speed(midi_diff_to_pitch(note_to_play.1.midi_note_diff)),
             ));
         }
     }

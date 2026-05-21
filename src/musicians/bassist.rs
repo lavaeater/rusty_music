@@ -1,5 +1,5 @@
-use bevy::prelude::{Commands, Time};
-use bevy_seedling::prelude::{Audio, AudioEvents, InstantSeconds, PlaybackSettings, SamplePlayer, Volume};
+use bevy::prelude::Commands;
+use bevy_seedling::prelude::{PlaybackSettings, SamplePlayer, Volume};
 use crate::clock::Beat;
 use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler, TonalPlayer};
 
@@ -12,29 +12,24 @@ impl Bassist {
         Self { sampler }
     }
 
-    fn play_note(&self, note: Note, commands: &mut Commands, audio_time: &Time<Audio>, scheduled_at: InstantSeconds) {
-        let mut events = AudioEvents::new(audio_time);
-        let settings = PlaybackSettings::default()
-            .with_playback(false)
-            .with_speed(midi_diff_to_pitch(note.midi_note_diff));
-        settings.play_at(None, scheduled_at, &mut events);
+    fn play_note(&self, note: Note, commands: &mut Commands) {
         commands.spawn((
             SamplePlayer::new(self.sampler.handle.clone())
                 .with_volume(Volume::Decibels(self.sampler.volume as f32)),
-            settings,
-            events,
+            PlaybackSettings::default()
+                .with_speed(midi_diff_to_pitch(note.midi_note_diff)),
         ));
     }
 }
 
 impl MusicPlayer for Bassist {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord, audio_time: &Time<Audio>, scheduled_at: InstantSeconds) {
+    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
         let step = TonalPlayer::flat_step(&beat); // 0–15 within bar
 
         if step == 0 {
             // Downbeat: always play the root (strongest chord tone).
             if let Some(note) = TonalPlayer::get_chord_note(chord, 1.0) {
-                self.play_note(note, commands, audio_time, scheduled_at);
+                self.play_note(note, commands);
             }
             return;
         }
@@ -43,7 +38,7 @@ impl MusicPlayer for Bassist {
             // Quarter beats: play strong chord tone probabilistically.
             if rand::random::<f32>() < base_intensity {
                 if let Some(note) = TonalPlayer::get_chord_note(chord, 0.5) {
-                    self.play_note(note, commands, audio_time, scheduled_at);
+                    self.play_note(note, commands);
                 }
             }
             return;
@@ -53,7 +48,7 @@ impl MusicPlayer for Bassist {
             // 8th-note offbeats: play at moderate probability.
             if rand::random::<f32>() < base_intensity - 0.25 {
                 if let Some(note) = TonalPlayer::get_chord_note(chord, 0.25) {
-                    self.play_note(note, commands, audio_time, scheduled_at);
+                    self.play_note(note, commands);
                 }
             }
             return;
@@ -62,7 +57,7 @@ impl MusicPlayer for Bassist {
         // 16th-note positions: play only at high intensity.
         if rand::random::<f32>() < base_intensity - 0.5 {
             if let Some(note) = TonalPlayer::get_chord_note(chord, 0.0) {
-                self.play_note(note, commands, audio_time, scheduled_at);
+                self.play_note(note, commands);
             }
         }
     }

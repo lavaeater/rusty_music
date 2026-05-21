@@ -1,5 +1,5 @@
-use bevy::prelude::{Commands, Time};
-use bevy_seedling::prelude::{Audio, AudioEvents, InstantSeconds, PlaybackSettings, SamplePlayer, Volume};
+use bevy::prelude::Commands;
+use bevy_seedling::prelude::{PlaybackSettings, SamplePlayer, Volume};
 use crate::clock::Beat;
 use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Sampler};
 
@@ -29,7 +29,7 @@ impl Arpeggiator {
 }
 
 impl MusicPlayer for Arpeggiator {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord, audio_time: &Time<Audio>, scheduled_at: InstantSeconds) {
+    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
         // Higher intensity → more frequent notes.
         // wait=4 → quarter notes, wait=2 → 8ths, wait=1 → 16ths.
         let wait_ticks: u32 = if base_intensity < 0.4 {
@@ -63,16 +63,11 @@ impl MusicPlayer for Arpeggiator {
         };
 
         if let Some(note) = chord.chord_notes.get(note_index as usize) {
-            let mut events = AudioEvents::new(audio_time);
-            let settings = PlaybackSettings::default()
-                .with_playback(false)
-                .with_speed(midi_diff_to_pitch(note.midi_note_diff));
-            settings.play_at(None, scheduled_at, &mut events);
             commands.spawn((
                 SamplePlayer::new(self.sampler.handle.clone())
                     .with_volume(Volume::Decibels(self.sampler.volume as f32)),
-                settings,
-                events,
+                PlaybackSettings::default()
+                    .with_speed(midi_diff_to_pitch(note.midi_note_diff)),
             ));
         }
     }

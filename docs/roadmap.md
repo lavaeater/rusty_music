@@ -181,7 +181,7 @@ The current mapping treats `(beat, sixteenth)` as a 2-level grid where `sixteent
 6. ✅ **Fix bassist note selection** (§3.1)
 7. ✅ **Fix soloist note-selection grid** (§3.2)
 8. ✅ **Add `chord_length_bars` to Conductor** (§2.2)
-9. ✅ **Add scheduled note timing** (§2.1) — `Beat.overshoot` captures frame jitter; each musician schedules via `AudioEvents::play_at`.
+9. ✅ **Add scheduled note timing** (§2.1) — `Beat.overshoot` captures frame jitter. Per-note `play_at` scheduling was attempted but floods Firewheel's message channel at higher intensities. Long-term drift is prevented by the accumulator fix (§1.1); per-note ECS jitter (~8ms) is imperceptible in game music.
 10. **Drummer fills and time-feel switching** (§4.1).
 11. **Bassist scale embellishments + memory** (§4.2).
 12. **Additional arpeggio modes** (§4.3).
