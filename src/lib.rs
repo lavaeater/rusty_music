@@ -1,7 +1,7 @@
 use bevy::app::{App, Plugin, Update};
 use bevy_kira_audio::{AudioPlugin, AudioSource};
 use bevy::asset::Handle;
-use bevy::utils::HashMap;
+use std::collections::HashMap;
 use crate::clock::{Beat, Clock, progress_clock_system};
 use crate::musicians::{Chord, Musician, Note, Sampler};
 use crate::musicians::arpeggiator::Arpeggiator;
@@ -41,7 +41,7 @@ impl Plugin for MusicPlugin {
         app
             .insert_resource(Clock::new(self.beats, self.note_type, self.bpm))
             .insert_resource(Intensity(0.5))
-            .add_event::<Beat>()
+            .add_message::<Beat>()
             .add_systems(Update, (
                 progress_clock_system,
                 play_sound_on_the_beat));

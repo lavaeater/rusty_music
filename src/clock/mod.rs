@@ -1,4 +1,4 @@
-use bevy::prelude::{Event, EventWriter, Res, ResMut, Resource, Time};
+use bevy::prelude::{Message, MessageWriter, Res, ResMut, Resource, Time};
 
 #[derive(Debug, Clone, Copy, Resource)]
 pub struct Clock {
@@ -75,7 +75,7 @@ impl Clock {
     }
 }
 
-#[derive(Debug, Clone, Copy, Event)]
+#[derive(Debug, Clone, Copy, Message)]
 pub struct Beat {
     pub elapsed_time: f32,
     pub beat: u32,
@@ -112,11 +112,11 @@ impl Beat {
 pub fn progress_clock_system(
     mut clock: ResMut<Clock>,
     time: Res<Time>,
-    mut beat_sender: EventWriter<Beat>,
+    mut beat_sender: MessageWriter<Beat>,
 ) {
-    if clock.progress(time.delta_seconds()) {
+    if clock.progress(time.delta_secs()) {
         let time_bars = clock.time_bars();
-        beat_sender.send(Beat::new(
+        beat_sender.write(Beat::new(
             clock.elapsed_time,
             clock.beat,
             clock.sixteenth,
