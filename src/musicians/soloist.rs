@@ -1,6 +1,5 @@
-use bevy::prelude::Res;
-use bevy_kira_audio::{Audio, AudioControl};
-use bevy_kira_audio::prelude::Decibels;
+use bevy::prelude::Commands;
+use bevy_seedling::prelude::{PlaybackSettings, SamplePlayer, Volume};
 use crate::clock::Beat;
 use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler, TonalPlayer, STEPS_PER_BAR};
 
@@ -29,11 +28,13 @@ impl Soloist {
         }
     }
 
-    fn play_note(&self, note: Note, audio: &Res<Audio>) {
-        audio
-            .play(self.sampler.handle.clone())
-            .with_volume(Decibels(self.sampler.volume as f32))
-            .with_playback_rate(midi_diff_to_pitch(note.midi_note_diff));
+    fn play_note(&self, note: Note, commands: &mut Commands) {
+        commands.spawn((
+            SamplePlayer::new(self.sampler.handle.clone())
+                .with_volume(Volume::Decibels(self.sampler.volume as f32)),
+            PlaybackSettings::default()
+                .with_speed(midi_diff_to_pitch(note.midi_note_diff)),
+        ));
     }
 
     /// Recording index: 0 .. record_bars * STEPS_PER_BAR.
@@ -73,13 +74,13 @@ impl Soloist {
 }
 
 impl MusicPlayer for Soloist {
-    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) {
+    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
         let recording_index = Self::recording_index(&beat, self.record_bars) as usize;
 
         if beat.time_bars < self.repeat_end_bar {
             // Playback mode: replay the recorded melody.
             if let Some(note) = self.recorded_melody[recording_index] {
-                self.play_note(note, audio);
+                self.play_note(note, commands);
             }
         } else {
             // Recording mode: generate a new note and record it.
@@ -93,7 +94,7 @@ impl MusicPlayer for Soloist {
             self.recorded_melody[recording_index] = note;
 
             if let Some(n) = note {
-                self.play_note(n, audio);
+                self.play_note(n, commands);
             }
 
             // Once the last step of the recording is filled, schedule the repeat.

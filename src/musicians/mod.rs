@@ -5,8 +5,8 @@ pub mod soloist;
 pub mod arpeggiator;
 
 use std::cmp::Ordering;
-use bevy::prelude::{Component, Res};
-use bevy_kira_audio::{Audio, AudioSource};
+use bevy::prelude::{Commands, Component};
+use bevy_seedling::prelude::AudioSample;
 use bevy::asset::Handle;
 use rand::seq::IteratorRandom;
 use crate::clock::Beat;
@@ -33,11 +33,11 @@ pub fn midi_diff_to_pitch(midi_diff: i32) -> f64 {
 }
 
 pub trait MusicPlayer: Send + Sync {
-    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord);
+    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord);
 }
 
 pub struct Sampler {
-    pub handle: Handle<AudioSource>,
+    pub handle: Handle<AudioSample>,
     pub volume: f64,
 }
 

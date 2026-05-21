@@ -1,5 +1,5 @@
 use bevy::app::{App, Plugin, Update};
-use bevy_kira_audio::{AudioPlugin, AudioSource};
+use bevy_seedling::prelude::{AudioSample, SeedlingPlugin};
 use bevy::asset::Handle;
 use std::collections::HashMap;
 use crate::clock::{Beat, Clock, progress_clock_system};
@@ -35,9 +35,7 @@ impl Default for MusicPlugin {
 
 impl Plugin for MusicPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<AudioPlugin>() {
-            app.add_plugins(AudioPlugin);
-        }
+        app.add_plugins(SeedlingPlugin::default());
         app
             .insert_resource(Clock::new(self.beats, self.note_type, self.bpm))
             .insert_resource(Intensity(0.5))
@@ -133,7 +131,7 @@ pub fn generate_chords() -> Vec<Chord> {
 
 pub fn create_drummer(
     name: String,
-    handle: Handle<AudioSource>,
+    handle: Handle<AudioSample>,
     volume: f64,
     drum_beat: HashMap<(u32, u32), Note>,
 ) -> Musician {
@@ -144,7 +142,7 @@ pub fn create_drummer(
 }
 
 pub fn create_drummer_only(
-    handle: Handle<AudioSource>,
+    handle: Handle<AudioSample>,
     volume: f64,
     drum_beat: HashMap<(u32, u32), Note>,
 ) -> Drummer {
@@ -153,7 +151,7 @@ pub fn create_drummer_only(
 
 pub fn create_arpeggiator(
     name: String,
-    handle: Handle<AudioSource>,
+    handle: Handle<AudioSample>,
     volume: f64,
 ) -> Musician {
     Musician::new(
@@ -164,7 +162,7 @@ pub fn create_arpeggiator(
 
 pub fn create_soloist(
     name: String,
-    handle: Handle<AudioSource>,
+    handle: Handle<AudioSample>,
     volume: f64,
     record_bars: u32,
     repeats: u32,
@@ -177,7 +175,7 @@ pub fn create_soloist(
 
 pub fn create_bassist(
     name: String,
-    handle: Handle<AudioSource>,
+    handle: Handle<AudioSample>,
     volume: f64,
 ) -> Musician {
     Musician::new(

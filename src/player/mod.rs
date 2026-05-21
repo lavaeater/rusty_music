@@ -1,5 +1,4 @@
-use bevy::prelude::{MessageReader, Query, Res, Resource};
-use bevy_kira_audio::Audio;
+use bevy::prelude::{Commands, MessageReader, Query, Res, Resource};
 use crate::clock::Beat;
 use crate::musicians::Musician;
 use crate::musicians::conductor::Conductor;
@@ -9,7 +8,7 @@ pub struct Intensity(pub f32);
 
 pub fn play_sound_on_the_beat(
     mut beat_reader: MessageReader<Beat>,
-    audio: Res<Audio>,
+    mut commands: Commands,
     conductor: Res<Conductor>,
     intensity: Res<Intensity>,
     mut instruments: Query<&mut Musician>,
@@ -18,7 +17,7 @@ pub fn play_sound_on_the_beat(
         let chord = conductor.current_chord(beat.time_bars);
 
         for mut musician in instruments.iter_mut() {
-            musician.player.play(*beat, &audio, intensity.0, chord);
+            musician.player.play(*beat, &mut commands, intensity.0, chord);
         }
     }
 }
