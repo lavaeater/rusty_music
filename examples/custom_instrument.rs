@@ -45,46 +45,48 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
+    // Custom soloist: sax one-shot pitched by the sampler
     commands.spawn(Musician::new(
-        "Melody".to_string(),
+        "Sax".to_string(),
         Soloist::new(
             Sampler {
-                handle: asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
-                volume: 0.251188643150958,
+                handle: asset_server.load("samples/glicol/sax.wav"),
+                volume: 0.5,
             },
-            4,  // record_bars
-            2,  // repeats
+            4,  // record_bars (AABA sections are each 4 bars)
         ),
     ));
 
+    // Moog bass
     commands.spawn(Musician::new(
-        "Bassist".to_string(),
+        "Moog Bass".to_string(),
         Bassist::new(Sampler {
-            handle: asset_server.load("samples/lo-fi/construction/120/bass/c.wav"),
-            volume: 0.7,
+            handle: asset_server.load("samples/glicol/moog.wav"),
+            volume: 0.8,
         }),
     ));
 
+    // 808 drum kit
     commands.spawn(Musician::new(
-        "Kick".to_string(),
+        "808 Kick".to_string(),
         Drummer::new(
-            Sampler { handle: asset_server.load("samples/drums/kit-d/kick.wav"), volume: 1.0 },
+            Sampler { handle: asset_server.load("samples/glicol/808bd.wav"), volume: 1.0 },
             generate_kick_beat(),
         ),
     ));
 
     commands.spawn(Musician::new(
-        "Snare".to_string(),
+        "808 Snare".to_string(),
         Drummer::new(
-            Sampler { handle: asset_server.load("samples/drums/kit-d/snare.wav"), volume: 1.0 },
+            Sampler { handle: asset_server.load("samples/glicol/808sd.wav"), volume: 0.9 },
             generate_snare_beat(),
         ),
     ));
 
     commands.spawn(Musician::new(
-        "Hihat".to_string(),
+        "808 Hat".to_string(),
         Drummer::new(
-            Sampler { handle: asset_server.load("samples/drums/kit-d/hihat.wav"), volume: 1.0 },
+            Sampler { handle: asset_server.load("samples/glicol/808ch.wav"), volume: 0.6 },
             generate_hihat_beat(),
         ),
     ));

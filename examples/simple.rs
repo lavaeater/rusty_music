@@ -47,26 +47,25 @@ fn setup(
     commands.spawn(
         create_soloist(
             "Melody".to_string(),
-            asset_server.load("samples/lo-fi/construction/120/acid/short/c.wav"),
-            0.251188643150958,
-            2,  // record_bars
-            2,  // repeats
+            asset_server.load("samples/glicol/pluck.wav"),
+            0.5,
+            2,  // record_bars (AABA sections are each 2 bars)
         ));
 
     commands.spawn(
         create_bassist(
             "Bassist".to_string(),
-            asset_server.load("samples/lo-fi/construction/120/bass/c.wav"),
-            0.7,
+            asset_server.load("samples/glicol/bass3.wav"),
+            0.8,
         ));
 
     commands.spawn(
         Musician::new(
             "Drummer".to_string(),
             SuperDrummer::new(vec![
-                create_drummer_only(asset_server.load("samples/drums/kick.wav"), 1.0, generate_kick_beat()),
-                create_drummer_only(asset_server.load("samples/drums/snare.wav"), 1.0, generate_snare_beat()),
-                create_drummer_only(asset_server.load("samples/drums/hihat.wav"), 1.0, generate_hihat_beat()),
+                create_drummer_only(asset_server.load("samples/glicol/kick1.wav"), 1.0, generate_kick_beat()),
+                create_drummer_only(asset_server.load("samples/glicol/snare1.wav"), 0.9, generate_snare_beat()),
+                create_drummer_only(asset_server.load("samples/glicol/closedhh.wav"), 0.6, generate_hihat_beat()),
             ]),
         ));
 

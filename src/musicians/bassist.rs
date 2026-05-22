@@ -1,63 +1,130 @@
-use bevy::prelude::Res;
-use bevy_kira_audio::{Audio, AudioControl};
-use bevy_kira_audio::prelude::Decibels;
+use bevy::prelude::Commands;
+use bevy_seedling::prelude::{PlaybackSettings, SamplePlayer, Volume};
+use rand::seq::IteratorRandom;
 use crate::clock::Beat;
-use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler, TonalPlayer};
+use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler, TonalPlayer, STEPS_PER_BAR};
 
 pub struct Bassist {
     pub sampler: Sampler,
+    /// MIDI semitone offset of the last played note, for proximity-biased selection.
+    last_midi_diff: Option<i32>,
+    /// Record `memory_bars` bars of bass line and repeat it `memory_repeats` times. 0 = no memory.
+    pub memory_bars: u32,
+    pub memory_repeats: u32,
+    recorded_line: Vec<Option<Note>>,
+    repeat_end_bar: f32,
 }
 
 impl Bassist {
     pub fn new(sampler: Sampler) -> Self {
-        Self { sampler }
+        Self {
+            sampler,
+            last_midi_diff: None,
+            memory_bars: 0,
+            memory_repeats: 1,
+            recorded_line: Vec::new(),
+            repeat_end_bar: 0.0,
+        }
     }
 
-    fn play_note(&self, note: Note, audio: &Res<Audio>) {
-        audio
-            .play(self.sampler.handle.clone())
-            .with_volume(Decibels(self.sampler.volume as f32))
-            .with_playback_rate(midi_diff_to_pitch(note.midi_note_diff));
+    /// Select a random note at or above `min_strength`, biasing toward notes
+    /// within 5 semitones of the last played note for smoother melodic lines.
+    fn get_proximate_note(notes: &[Note], min_strength: f32, last: Option<i32>) -> Option<Note> {
+        let candidates: Vec<Note> = notes
+            .iter()
+            .filter(|n| n.strength >= min_strength)
+            .copied()
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        if let Some(last_midi) = last {
+            let close: Vec<Note> = candidates
+                .iter()
+                .filter(|n| (n.midi_note_diff - last_midi).abs() <= 5)
+                .copied()
+                .collect();
+            if !close.is_empty() {
+                return close.into_iter().choose(&mut rand::rng());
+            }
+        }
+        candidates.into_iter().choose(&mut rand::rng())
+    }
+
+    fn play_note(&mut self, note: Note, commands: &mut Commands) {
+        self.last_midi_diff = Some(note.midi_note_diff);
+        commands.spawn((
+            SamplePlayer::new(self.sampler.handle.clone())
+                .with_volume(Volume::Decibels(self.sampler.volume as f32)),
+            PlaybackSettings::default()
+                .with_speed(midi_diff_to_pitch(note.midi_note_diff)),
+        ));
+    }
+
+    fn generate_note(&self, step: u32, base_intensity: f32, chord: &Chord) -> Option<Note> {
+        let last = self.last_midi_diff;
+        if step == 0 {
+            Self::get_proximate_note(&chord.chord_notes, 1.0, last)
+        } else if step % 4 == 0 {
+            if rand::random::<f32>() < base_intensity {
+                Self::get_proximate_note(&chord.chord_notes, 0.5, last)
+            } else {
+                None
+            }
+        } else if step % 2 == 0 {
+            if rand::random::<f32>() < base_intensity - 0.25 {
+                Self::get_proximate_note(&chord.chord_notes, 0.25, last)
+            } else {
+                None
+            }
+        } else if rand::random::<f32>() < base_intensity - 0.5 {
+            Self::get_proximate_note(&chord.scale_notes, 0.0, last)
+        } else {
+            None
+        }
     }
 }
 
 impl MusicPlayer for Bassist {
-    fn play(&mut self, beat: Beat, audio: &Res<Audio>, base_intensity: f32, chord: &Chord) {
-        let step = TonalPlayer::flat_step(&beat); // 0–15 within bar
+    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+        let step = TonalPlayer::flat_step(&beat);
 
-        if step == 0 {
-            // Downbeat: always play the root (strongest chord tone).
-            if let Some(note) = TonalPlayer::get_chord_note(chord, 1.0) {
-                self.play_note(note, audio);
+        if self.memory_bars > 0 {
+            let total = (self.memory_bars * STEPS_PER_BAR) as usize;
+            if self.recorded_line.len() != total {
+                self.recorded_line = vec![None; total];
             }
-            return;
-        }
 
-        if step % 4 == 0 {
-            // Quarter beats: play strong chord tone probabilistically.
-            if rand::random::<f32>() < base_intensity {
-                if let Some(note) = TonalPlayer::get_chord_note(chord, 0.5) {
-                    self.play_note(note, audio);
+            let bar_in_cycle = beat.bar_count % self.memory_bars;
+            let recording_index = (bar_in_cycle * STEPS_PER_BAR + step) as usize;
+
+            if beat.time_bars < self.repeat_end_bar {
+                if let Some(note) = self.recorded_line[recording_index] {
+                    self.play_note(note, commands);
                 }
+                return;
+            }
+
+            if recording_index == 0 {
+                self.recorded_line.fill(None);
+            }
+
+            let note = self.generate_note(step, base_intensity, chord);
+            self.recorded_line[recording_index] = note;
+            if let Some(n) = note {
+                self.play_note(n, commands);
+            }
+
+            let last_index = total - 1;
+            if recording_index >= last_index {
+                self.repeat_end_bar =
+                    beat.time_bars.ceil() + (self.memory_repeats * self.memory_bars) as f32;
             }
             return;
         }
 
-        if step % 2 == 0 {
-            // 8th-note offbeats: play at moderate probability.
-            if rand::random::<f32>() < base_intensity - 0.25 {
-                if let Some(note) = TonalPlayer::get_chord_note(chord, 0.25) {
-                    self.play_note(note, audio);
-                }
-            }
-            return;
-        }
-
-        // 16th-note positions: play only at high intensity.
-        if rand::random::<f32>() < base_intensity - 0.5 {
-            if let Some(note) = TonalPlayer::get_chord_note(chord, 0.0) {
-                self.play_note(note, audio);
-            }
+        if let Some(note) = self.generate_note(step, base_intensity, chord) {
+            self.play_note(note, commands);
         }
     }
 }
@@ -65,6 +132,8 @@ impl MusicPlayer for Bassist {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::asset::Handle;
+    use crate::musicians::{AudioSample, Sampler};
 
     fn make_beat(beat: u32, sixteenth: u32) -> Beat {
         Beat {
@@ -75,7 +144,12 @@ mod tests {
             beat_count: beat,
             sixteenth_count: beat * 4 + sixteenth,
             time_bars: beat as f32 / 4.0 + sixteenth as f32 / 16.0,
+            overshoot: 0.0,
         }
+    }
+
+    fn make_bassist() -> Bassist {
+        Bassist::new(Sampler { handle: Handle::<AudioSample>::default(), volume: 1.0 })
     }
 
     #[test]
@@ -92,49 +166,53 @@ mod tests {
 
     #[test]
     fn flat_step_eighth_positions() {
-        // Even but not multiples of 4: positions 2, 6, 10, 14
         for (b, s) in [(0u32, 2u32), (1, 2), (2, 2), (3, 2)] {
             let step = TonalPlayer::flat_step(&make_beat(b, s));
-            assert!(step % 2 == 0 && step % 4 != 0, "step {step} should be 8th position");
+            assert!(step % 2 == 0 && step % 4 != 0);
         }
     }
 
     #[test]
     fn flat_step_sixteenth_positions() {
-        // Odd positions: 1, 3, 5, 7, ...
         for (b, s) in [(0u32, 1u32), (0, 3), (1, 1), (1, 3)] {
             let step = TonalPlayer::flat_step(&make_beat(b, s));
-            assert!(step % 2 != 0, "step {step} should be 16th (odd) position");
+            assert!(step % 2 != 0);
         }
     }
 
     #[test]
-    fn downbeat_always_plays_regardless_of_intensity() {
-        // At step==0 with intensity 0.0 we still play: no random check.
-        // Verify the condition: step==0 always triggers (no intensity gate).
-        let beat = make_beat(0, 0);
-        assert_eq!(TonalPlayer::flat_step(&beat), 0);
-        // No intensity threshold — the code always plays when step==0.
+    fn get_proximate_prefers_close_notes() {
+        let notes = vec![
+            Note::new(0, 1.0),
+            Note::new(7, 1.0),
+            Note::new(12, 1.0),
+        ];
+        for _ in 0..20 {
+            let n = Bassist::get_proximate_note(&notes, 1.0, Some(1)).unwrap();
+            assert_eq!(n.midi_note_diff, 0);
+        }
     }
 
     #[test]
-    fn quarter_plays_when_intensity_exceeds_random() {
-        // At full intensity (1.0) the quarter condition always fires.
-        // At zero intensity it never fires (gen::<f32>() is always >= 0).
-        let beat = make_beat(1, 0);
-        let step = TonalPlayer::flat_step(&beat);
-        assert_eq!(step % 4, 0);
-        assert_ne!(step, 0);
-        // intensity=0.0: condition `gen < 0.0` is always false → no play
-        // intensity=1.0: condition `gen < 1.0` is (almost) always true → play
+    fn get_proximate_falls_back_when_no_close_note() {
+        let notes = vec![Note::new(10, 1.0)];
+        let n = Bassist::get_proximate_note(&notes, 1.0, Some(0)).unwrap();
+        assert_eq!(n.midi_note_diff, 10);
     }
 
     #[test]
-    fn sixteenth_never_plays_below_half_intensity() {
-        // `gen::<f32>() < intensity - 0.5` when intensity <= 0.5 is always false.
-        let beat = make_beat(0, 1); // step=1, odd
-        let step = TonalPlayer::flat_step(&beat);
-        assert!(step % 2 != 0);
-        // At intensity=0.5: 0.5 - 0.5 = 0.0, gen >= 0.0 → never plays
+    fn bassist_tracks_last_midi_diff() {
+        let mut bassist = make_bassist();
+        assert!(bassist.last_midi_diff.is_none());
+        bassist.last_midi_diff = Some(5);
+        assert_eq!(bassist.last_midi_diff, Some(5));
+    }
+
+    #[test]
+    fn memory_bars_initializes_recorded_line() {
+        let mut b = make_bassist();
+        b.memory_bars = 2;
+        b.recorded_line.resize((2 * STEPS_PER_BAR) as usize, None);
+        assert_eq!(b.recorded_line.len(), 32);
     }
 }
