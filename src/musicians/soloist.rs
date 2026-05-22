@@ -36,7 +36,7 @@ pub struct Soloist {
     melody_b: Vec<Option<Note>>,
     phase: AabaPhase,
     /// `time_bars` at which the current section ends and the next begins.
-    /// 0.0 means "start recording immediately" (no playback pending).
+    /// 0.0 means "start recording immediately".
     section_end_bar: f32,
     sampler: Sampler,
 }
@@ -63,9 +63,8 @@ impl Soloist {
         ));
     }
 
-    /// Flat step within the current AABA cycle: 0 .. record_bars * STEPS_PER_BAR.
     fn recording_index(beat: &Beat, record_bars: u32) -> u32 {
-        let within_bar = TonalPlayer::flat_step(beat); // 0–15
+        let within_bar = TonalPlayer::flat_step(beat);
         let bar_in_cycle = beat.bar_count % record_bars;
         bar_in_cycle * STEPS_PER_BAR + within_bar
     }
@@ -85,12 +84,10 @@ impl Soloist {
             } else {
                 None
             }
+        } else if rand::random::<f32>() < intensity - 0.5 {
+            TonalPlayer::get_scale_note(chord, 0.0)
         } else {
-            if rand::random::<f32>() < intensity - 0.5 {
-                TonalPlayer::get_scale_note(chord, 0.0)
-            } else {
-                None
-            }
+            None
         }
     }
 }
@@ -100,7 +97,7 @@ impl MusicPlayer for Soloist {
         let recording_index = Self::recording_index(&beat, self.record_bars) as usize;
         let last_index = (self.record_bars * STEPS_PER_BAR - 1) as usize;
 
-        // Phase transition: when the section has expired AND we're at the start of a new cycle.
+        // Phase transition: advance when the section has expired and a new cycle starts.
         if self.section_end_bar > 0.0
             && beat.time_bars >= self.section_end_bar
             && recording_index == 0
@@ -115,8 +112,7 @@ impl MusicPlayer for Soloist {
         }
 
         if self.phase.is_recording() {
-            // Recording mode: generate and immediately play each note.
-            let step = TonalPlayer::flat_step(&beat); // 0–15 within bar
+            let step = TonalPlayer::flat_step(&beat);
             let note = Self::generate_note(step, chord, base_intensity);
 
             match self.phase {
@@ -129,13 +125,11 @@ impl MusicPlayer for Soloist {
                 self.play_note(n, commands);
             }
 
-            // Schedule the end of this section once the last step is reached.
             if recording_index >= last_index && self.section_end_bar <= 0.0 {
                 self.section_end_bar = beat.time_bars.ceil();
             }
         } else {
-            // Playback mode: replay the A melody (B section playback is not part of AABA —
-            // B is recorded live; only A is replayed).
+            // Playback: A replays the A melody; B section is always recorded live.
             if let Some(note) = self.melody_a[recording_index] {
                 self.play_note(note, commands);
             }
@@ -175,26 +169,22 @@ mod tests {
 
     #[test]
     fn recording_index_downbeat_bar0() {
-        let beat = make_beat(0, 0, 0);
-        assert_eq!(Soloist::recording_index(&beat, 2), 0);
+        assert_eq!(Soloist::recording_index(&make_beat(0, 0, 0), 2), 0);
     }
 
     #[test]
     fn recording_index_last_step_bar0() {
-        let beat = make_beat(3, 3, 0);
-        assert_eq!(Soloist::recording_index(&beat, 2), 15);
+        assert_eq!(Soloist::recording_index(&make_beat(3, 3, 0), 2), 15);
     }
 
     #[test]
     fn recording_index_bar1() {
-        let beat = make_beat(0, 0, 1);
-        assert_eq!(Soloist::recording_index(&beat, 2), 16);
+        assert_eq!(Soloist::recording_index(&make_beat(0, 0, 1), 2), 16);
     }
 
     #[test]
     fn recording_index_last_step_bar1() {
-        let beat = make_beat(3, 3, 1);
-        assert_eq!(Soloist::recording_index(&beat, 2), 31);
+        assert_eq!(Soloist::recording_index(&make_beat(3, 3, 1), 2), 31);
     }
 
     #[test]

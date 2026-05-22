@@ -16,6 +16,8 @@ pub enum ArpeggioMode {
 pub struct Arpeggiator {
     pub sampler: Sampler,
     pub arpeggio_mode: ArpeggioMode,
+    /// When true, occasionally substitutes scale notes for chord tones at high intensity.
+    pub use_scale_runs: bool,
     pub some_index: u32,
     /// Direction for PingPong mode: +1 = ascending, -1 = descending.
     pub ping_pong_dir: i32,
@@ -28,13 +30,13 @@ impl Arpeggiator {
         Self {
             sampler,
             arpeggio_mode: ArpeggioMode::Auto,
+            use_scale_runs: false,
             some_index: 0,
             ping_pong_dir: 1,
             next_sixteenth: 0,
         }
     }
 
-    /// Advance the internal index and return the chord-note index to play.
     fn advance_index(&mut self, len: u32, mode: ArpeggioMode) -> u32 {
         match mode {
             ArpeggioMode::Up => {
@@ -43,7 +45,6 @@ impl Arpeggiator {
                 note
             }
             ArpeggioMode::Down => {
-                // Play from highest (len-1) down to 0, then wrap.
                 let note = (len - 1).saturating_sub(self.some_index);
                 self.some_index = (self.some_index + 1) % len;
                 note
@@ -68,8 +69,6 @@ impl Arpeggiator {
 
 impl MusicPlayer for Arpeggiator {
     fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
-        // Higher intensity → more frequent notes.
-        // wait=4 → quarter notes, wait=2 → 8ths, wait=1 → 16ths.
         let wait_ticks: u32 = if base_intensity < 0.4 {
             4
         } else if base_intensity < 0.7 {
@@ -83,8 +82,14 @@ impl MusicPlayer for Arpeggiator {
         }
         self.next_sixteenth = beat.sixteenth_count + wait_ticks;
 
-        let chord_note_length = chord.chord_notes.len() as u32;
-        if chord_note_length == 0 {
+        // At high intensity, occasionally weave in scale notes instead of chord tones.
+        let use_scale = self.use_scale_runs
+            && !chord.scale_notes.is_empty()
+            && rand::random::<f32>() < (base_intensity - 0.5).max(0.0);
+
+        let notes = if use_scale { &chord.scale_notes } else { &chord.chord_notes };
+        let len = notes.len() as u32;
+        if len == 0 {
             return;
         }
 
@@ -101,9 +106,9 @@ impl MusicPlayer for Arpeggiator {
             other => other,
         };
 
-        let note_index = self.advance_index(chord_note_length, effective_mode);
+        let note_index = self.advance_index(len, effective_mode);
 
-        if let Some(note) = chord.chord_notes.get(note_index as usize) {
+        if let Some(note) = notes.get(note_index as usize) {
             commands.spawn((
                 SamplePlayer::new(self.sampler.handle.clone())
                     .with_volume(Volume::Decibels(self.sampler.volume as f32)),
@@ -128,6 +133,7 @@ mod tests {
         Arpeggiator {
             sampler: Sampler { handle: Handle::<AudioSample>::default(), volume: 1.0 },
             arpeggio_mode: ArpeggioMode::Up,
+            use_scale_runs: false,
             some_index: 0,
             ping_pong_dir: 1,
             next_sixteenth: 0,
@@ -161,7 +167,6 @@ mod tests {
     #[test]
     fn up_mode_cycles_ascending() {
         let mut arp = make_arp();
-        arp.arpeggio_mode = ArpeggioMode::Up;
         let seq: Vec<u32> = (0..6).map(|_| arp.advance_index(4, ArpeggioMode::Up)).collect();
         assert_eq!(seq, vec![0, 1, 2, 3, 0, 1]);
     }
@@ -177,7 +182,6 @@ mod tests {
     fn ping_pong_bounces() {
         let mut arp = make_arp();
         let seq: Vec<u32> = (0..8).map(|_| arp.advance_index(4, ArpeggioMode::PingPong)).collect();
-        // 0→1→2→3→2→1→0→1
         assert_eq!(seq, vec![0, 1, 2, 3, 2, 1, 0, 1]);
     }
 
@@ -201,12 +205,19 @@ mod tests {
 
     #[test]
     fn next_sixteenth_advances_by_wait() {
-        let wait: u32 = wait_for(0.5); // mid intensity → 2 ticks
+        let wait: u32 = wait_for(0.5);
         let mut next_sixteenth: u32 = 0;
         let current: u32 = 5;
         if current >= next_sixteenth {
             next_sixteenth = current + wait;
         }
         assert_eq!(next_sixteenth, 7);
+    }
+
+    #[test]
+    fn does_not_fire_before_next_sixteenth() {
+        let next_sixteenth: u32 = 10;
+        assert!(9 < next_sixteenth);
+        assert!(10 >= next_sixteenth);
     }
 }

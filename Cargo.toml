@@ -50,6 +50,7 @@ bevy = { version = "0.18.1", default-features = false, features = [
     "webgl2",
     "x11",
 ] }
+ratatui = "0.29"
 
 [features]
 default = []
@@ -65,4 +66,8 @@ path = "examples/simple.rs"
 [[example]]
 name = "custom_instrument"
 path = "examples/custom_instrument.rs"
+
+[[example]]
+name = "full_band"
+path = "examples/full_band.rs"
 
