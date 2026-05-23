@@ -98,6 +98,10 @@ impl TonalPlayer {
     }
 }
 
+/// Marker component: musician is silenced and skipped by `play_sound_on_the_beat`.
+#[derive(Component)]
+pub struct Muted;
+
 #[derive(Component)]
 pub struct Musician {
     pub name: String,

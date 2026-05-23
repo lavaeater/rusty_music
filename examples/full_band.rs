@@ -1,16 +1,12 @@
 //! Full-band example — all rusty_music features with a ratatui terminal visualizer.
 //!
 //! Controls:
-//!   ↑ / ↓   raise / lower intensity (0.0 – 1.0)
-//!   q / Esc  quit
-//!
-//! What you'll hear change as intensity rises:
-//!   • Drummer switches from half-time → normal → double-time feel and fires
-//!     snare fills every 4 bars.
-//!   • Bassist adds scale-tone embellishments and replays a 2-bar memorised line.
-//!   • Arpeggiator steps through Up → UpDown (ping-pong) → Random modes and
-//!     occasionally weaves in scale runs.
-//!   • Soloist follows AABA song form: records A, replays A, records B, replays A.
+//!   ↑ / ↓        raise / lower intensity (0.0 – 1.0)
+//!   D            toggle drummer on/off
+//!   B            toggle bassist on/off
+//!   A            toggle arpeggiator on/off
+//!   S            toggle soloist on/off
+//!   q / Esc      quit
 
 use std::io::{self, Stdout};
 use std::time::{Duration, Instant};
@@ -43,7 +39,7 @@ use rusty_music::musicians::drummer::{
     generate_kick_beat, generate_snare_beat, SuperDrummer,
 };
 use rusty_music::musicians::soloist::Soloist;
-use rusty_music::musicians::{Musician, Note, Sampler};
+use rusty_music::musicians::{Musician, Muted, Note, Sampler};
 use rusty_music::player::Intensity;
 use rusty_music::{create_drummer_only, generate_chords, MusicPlugin};
 
@@ -51,6 +47,24 @@ use rusty_music::{create_drummer_only, generate_chords, MusicPlugin};
 
 #[derive(Resource)]
 struct TuiTerminal(Terminal<CrosstermBackend<Stdout>>);
+
+/// Entity IDs so we can toggle Muted on specific musicians.
+#[derive(Resource)]
+struct BandEntities {
+    drummer: Entity,
+    bassist: Entity,
+    arpeggiator: Entity,
+    soloist: Entity,
+}
+
+/// Which musicians are currently muted.
+#[derive(Resource, Default)]
+struct MuteState {
+    drummer: bool,
+    bassist: bool,
+    arpeggiator: bool,
+    soloist: bool,
+}
 
 /// State shared between the update systems and the draw system.
 #[derive(Resource, Default)]
@@ -82,19 +96,18 @@ fn update_vis(
     clock: Res<Clock>,
     patterns: Res<NotePatterns>,
     intensity: Res<Intensity>,
+    mutes: Res<MuteState>,
     mut vis: ResMut<VisState>,
 ) {
     vis.bar = clock.bar_count;
     vis.beat = clock.beat;
     vis.sixteenth = clock.sixteenth;
 
-    // Only act when a new 16th-note fires.
     if clock.sixteenth_count == vis.last_sixteenth_count {
         return;
     }
     vis.last_sixteenth_count = clock.sixteenth_count;
 
-    // Decay activity flashes toward zero.
     vis.kick_flash = vis.kick_flash.saturating_sub(1);
     vis.snare_flash = vis.snare_flash.saturating_sub(1);
     vis.hihat_flash = vis.hihat_flash.saturating_sub(1);
@@ -105,28 +118,50 @@ fn update_vis(
     let min_strength = 1.0 - intensity.0;
     let key = (clock.beat, clock.sixteenth);
 
-    if patterns.kick.get(&key).map_or(false, |n: &Note| n.strength >= min_strength) {
-        vis.kick_flash = 5;
+    if !mutes.drummer {
+        if patterns.kick.get(&key).map_or(false, |n: &Note| n.strength >= min_strength) {
+            vis.kick_flash = 5;
+        }
+        if patterns.snare.get(&key).map_or(false, |n: &Note| n.strength >= min_strength) {
+            vis.snare_flash = 5;
+        }
+        if patterns.hihat.get(&key).map_or(false, |n: &Note| n.strength >= min_strength) {
+            vis.hihat_flash = 4;
+        }
     }
-    if patterns.snare.get(&key).map_or(false, |n: &Note| n.strength >= min_strength) {
-        vis.snare_flash = 5;
-    }
-    if patterns.hihat.get(&key).map_or(false, |n: &Note| n.strength >= min_strength) {
-        vis.hihat_flash = 4;
-    }
-    // Approximate flash for probabilistic instruments.
-    if clock.sixteenth == 0 {
+    if !mutes.bassist && clock.sixteenth == 0 {
         vis.bass_flash = 6;
     }
-    if clock.sixteenth % 2 == 0 {
+    if !mutes.arpeggiator && clock.sixteenth % 2 == 0 {
         vis.arp_flash = 4;
     }
-    if clock.beat == 0 && clock.sixteenth == 0 {
+    if !mutes.soloist && clock.beat == 0 && clock.sixteenth == 0 {
         vis.solo_flash = 8;
     }
 }
 
-fn handle_input(mut intensity: ResMut<Intensity>) {
+fn toggle_mute(
+    commands: &mut Commands,
+    muted_q: &Query<Entity, With<Muted>>,
+    entity: Entity,
+    state: &mut bool,
+) {
+    if muted_q.contains(entity) {
+        commands.entity(entity).remove::<Muted>();
+        *state = false;
+    } else {
+        commands.entity(entity).insert(Muted);
+        *state = true;
+    }
+}
+
+fn handle_input(
+    mut commands: Commands,
+    band: Res<BandEntities>,
+    muted_q: Query<Entity, With<Muted>>,
+    mut intensity: ResMut<Intensity>,
+    mut mutes: ResMut<MuteState>,
+) {
     while event::poll(Duration::ZERO).unwrap_or(false) {
         let Ok(Event::Key(key)) = event::read() else {
             continue;
@@ -142,6 +177,18 @@ fn handle_input(mut intensity: ResMut<Intensity>) {
             }
             KeyCode::Up => intensity.0 = (intensity.0 + 0.05).min(1.0),
             KeyCode::Down => intensity.0 = (intensity.0 - 0.05).max(0.0),
+            KeyCode::Char('d') | KeyCode::Char('D') => {
+                toggle_mute(&mut commands, &muted_q, band.drummer, &mut mutes.drummer);
+            }
+            KeyCode::Char('b') | KeyCode::Char('B') => {
+                toggle_mute(&mut commands, &muted_q, band.bassist, &mut mutes.bassist);
+            }
+            KeyCode::Char('a') | KeyCode::Char('A') => {
+                toggle_mute(&mut commands, &muted_q, band.arpeggiator, &mut mutes.arpeggiator);
+            }
+            KeyCode::Char('s') | KeyCode::Char('S') => {
+                toggle_mute(&mut commands, &muted_q, band.soloist, &mut mutes.soloist);
+            }
             _ => {}
         }
     }
@@ -151,18 +198,14 @@ fn draw_tui(
     mut terminal: ResMut<TuiTerminal>,
     mut vis: ResMut<VisState>,
     intensity: Res<Intensity>,
+    mutes: Res<MuteState>,
 ) {
-    // Throttle to ~30 fps to avoid hammering the terminal.
     let now = Instant::now();
-    if vis
-        .last_draw
-        .map_or(false, |t| now.duration_since(t).as_millis() < 33)
-    {
+    if vis.last_draw.map_or(false, |t| now.duration_since(t).as_millis() < 33) {
         return;
     }
     vis.last_draw = Some(now);
 
-    // Copy fields we need so we can release the `vis` borrow before calling draw.
     let snap = DrawSnap {
         bar: vis.bar,
         beat: vis.beat,
@@ -174,9 +217,22 @@ fn draw_tui(
         arp_flash: vis.arp_flash,
         solo_flash: vis.solo_flash,
         intensity: intensity.0,
+        mutes: MuteSnapshot {
+            drummer: mutes.drummer,
+            bassist: mutes.bassist,
+            arpeggiator: mutes.arpeggiator,
+            soloist: mutes.soloist,
+        },
     };
 
     let _ = terminal.0.draw(|frame| render(frame, &snap));
+}
+
+struct MuteSnapshot {
+    drummer: bool,
+    bassist: bool,
+    arpeggiator: bool,
+    soloist: bool,
 }
 
 struct DrawSnap {
@@ -190,15 +246,16 @@ struct DrawSnap {
     arp_flash: u8,
     solo_flash: u8,
     intensity: f32,
+    mutes: MuteSnapshot,
 }
 
 fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
     let area = frame.area();
 
     let rows = Layout::vertical([
-        Constraint::Length(3), // header
-        Constraint::Min(11),   // body
-        Constraint::Length(3), // footer
+        Constraint::Length(3),
+        Constraint::Min(11),
+        Constraint::Length(3),
     ])
     .split(area);
 
@@ -207,27 +264,17 @@ fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
         Paragraph::new(Line::from(vec![
             Span::styled(
                 " RustyMusic Full Band ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
             ),
             Span::raw("│  "),
-            Span::styled(
-                format!("Bar {:03}", s.bar + 1),
-                Style::default().fg(Color::Green),
-            ),
+            Span::styled(format!("Bar {:03}", s.bar + 1), Style::default().fg(Color::Green)),
             Span::raw("  Beat "),
             Span::styled(
                 (s.beat + 1).to_string(),
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
             ),
             Span::raw("  16th "),
-            Span::styled(
-                (s.sixteenth + 1).to_string(),
-                Style::default().fg(Color::Cyan),
-            ),
+            Span::styled((s.sixteenth + 1).to_string(), Style::default().fg(Color::Cyan)),
             Span::raw("  │  BPM 120"),
         ]))
         .block(Block::new().borders(Borders::ALL)),
@@ -240,7 +287,6 @@ fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
 
     let left = Layout::vertical([Constraint::Length(5), Constraint::Min(5)]).split(cols[0]);
 
-    // Beat / 16th position indicators
     let beat_cells: Vec<Span> = (0u32..4)
         .flat_map(|b| {
             let active = b == s.beat;
@@ -248,10 +294,7 @@ fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
                 Span::styled(
                     format!(" Beat {} ", b + 1),
                     if active {
-                        Style::default()
-                            .bg(Color::Green)
-                            .fg(Color::Black)
-                            .add_modifier(Modifier::BOLD)
+                        Style::default().bg(Color::Green).fg(Color::Black).add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().fg(Color::DarkGray)
                     },
@@ -282,59 +325,51 @@ fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
         Paragraph::new(vec![
             Line::from(""),
             Line::from(beat_cells),
-            Line::from(vec![Span::styled(
-                "  16ths within beat:",
-                Style::default().fg(Color::DarkGray),
-            )]),
+            Line::from(vec![Span::styled("  16ths within beat:", Style::default().fg(Color::DarkGray))]),
             Line::from(six_cells),
         ])
         .block(Block::new().borders(Borders::ALL).title(" Position ")),
         left[0],
     );
 
-    // Musician activity flash bars
-    let flash_line = |label: &'static str, flash: u8| -> Line<'static> {
+    let flash_line = |label: &'static str, flash: u8, muted: bool| -> Line<'static> {
         let filled = flash.min(5) as usize;
         let bar = format!("[{}{}]", "█".repeat(filled), "░".repeat(5 - filled));
-        let color = if flash > 3 {
-            Color::Green
+        let (label_color, bar_color) = if muted {
+            (Color::DarkGray, Color::DarkGray)
+        } else if flash > 3 {
+            (Color::White, Color::Green)
         } else if flash > 0 {
-            Color::Yellow
+            (Color::White, Color::Yellow)
         } else {
-            Color::DarkGray
+            (Color::White, Color::DarkGray)
         };
+        let mute_badge = if muted { " [MUTED]" } else { "" };
         Line::from(vec![
-            Span::styled(
-                format!(" {label:<9}"),
-                Style::default().fg(Color::White),
-            ),
-            Span::styled(bar, Style::default().fg(color)),
+            Span::styled(format!(" {label:<9}"), Style::default().fg(label_color)),
+            Span::styled(bar, Style::default().fg(bar_color)),
+            Span::styled(mute_badge, Style::default().fg(Color::Red).add_modifier(Modifier::DIM)),
         ])
     };
 
     frame.render_widget(
         Paragraph::new(vec![
-            flash_line("Kick     ", s.kick_flash),
-            flash_line("Snare    ", s.snare_flash),
-            flash_line("Hi-hat   ", s.hihat_flash),
-            flash_line("Bass     ", s.bass_flash),
-            flash_line("Arp      ", s.arp_flash),
-            flash_line("Soloist  ", s.solo_flash),
+            flash_line("Kick     ", s.kick_flash, s.mutes.drummer),
+            flash_line("Snare    ", s.snare_flash, s.mutes.drummer),
+            flash_line("Hi-hat   ", s.hihat_flash, s.mutes.drummer),
+            flash_line("Bass     ", s.bass_flash, s.mutes.bassist),
+            flash_line("Arp      ", s.arp_flash, s.mutes.arpeggiator),
+            flash_line("Soloist  ", s.solo_flash, s.mutes.soloist),
         ])
         .block(Block::new().borders(Borders::ALL).title(" Musician Activity ")),
         left[1],
     );
 
-    // Right column: intensity gauge + feature status
     let right = Layout::vertical([Constraint::Length(3), Constraint::Min(8)]).split(cols[1]);
 
     frame.render_widget(
         Gauge::default()
-            .block(
-                Block::new()
-                    .borders(Borders::ALL)
-                    .title(" Intensity  [↑] [↓] "),
-            )
+            .block(Block::new().borders(Borders::ALL).title(" Intensity  [↑] [↓] "))
             .gauge_style(Style::default().fg(Color::Yellow).bg(Color::DarkGray))
             .ratio(s.intensity as f64)
             .label(format!("{:.2}", s.intensity)),
@@ -364,7 +399,6 @@ fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
         format!("next fill in {} bar(s)", fill_countdown)
     };
 
-    // Approximate AABA section from bar number (each section = 4 bars).
     let soloist_section = match (s.bar / 4) % 4 {
         0 => ("Recording A  ", Color::Magenta),
         1 => ("Replaying A  ", Color::Cyan),
@@ -376,6 +410,15 @@ fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
         "memory + scale runs"
     } else {
         "memory (chord tones)"
+    };
+
+    let mute_hint = |muted: bool, key: &'static str, name: &'static str| -> Line<'static> {
+        let (color, tag) = if muted {
+            (Color::Red, format!("[{key}] {name:<10} MUTED"))
+        } else {
+            (Color::DarkGray, format!("[{key}] {name:<10} on"))
+        };
+        Line::from(Span::styled(format!(" {tag}"), Style::default().fg(color)))
     };
 
     let info = vec![
@@ -400,17 +443,15 @@ fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
             Span::styled(soloist_section.0, Style::default().fg(soloist_section.1)),
         ]),
         Line::from(""),
-        Line::from(vec![Span::styled(
-            "  Raise intensity to unlock features →",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        )]),
+        mute_hint(s.mutes.drummer, "D", "Drummer"),
+        mute_hint(s.mutes.bassist, "B", "Bassist"),
+        mute_hint(s.mutes.arpeggiator, "A", "Arpeggiator"),
+        mute_hint(s.mutes.soloist, "S", "Soloist"),
     ];
 
     frame.render_widget(
         Paragraph::new(info)
-            .block(Block::new().borders(Borders::ALL).title(" Feature Status ")),
+            .block(Block::new().borders(Borders::ALL).title(" Feature Status / Mutes ")),
         right[1],
     );
 
@@ -418,14 +459,11 @@ fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(" Controls: ", Style::default().fg(Color::DarkGray)),
-            Span::styled("[↑] [↓]", Style::default().fg(Color::Yellow)),
+            Span::styled("[↑][↓]", Style::default().fg(Color::Yellow)),
             Span::raw(" intensity  │  "),
-            Span::styled(
-                "[q]",
-                Style::default()
-                    .fg(Color::Red)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("[D][B][A][S]", Style::default().fg(Color::Cyan)),
+            Span::raw(" toggle instruments  │  "),
+            Span::styled("[q]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
             Span::raw(" quit"),
         ]))
         .block(Block::new().borders(Borders::ALL)),
@@ -436,7 +474,6 @@ fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
 // ── Startup ───────────────────────────────────────────────────────────────────
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // Pre-load handles; asset_server.load returns a cheap cloneable Arc-handle.
     let kick_h: Handle<bevy_seedling::prelude::AudioSample> =
         asset_server.load("samples/glicol/kick1.wav");
     let snare_h: Handle<bevy_seedling::prelude::AudioSample> =
@@ -447,18 +484,18 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let pad_h = asset_server.load("samples/glicol/pad.wav");
     let acid_h = asset_server.load("samples/glicol/stab.wav");
 
-    // SuperDrummer: auto time-feel + fills every 4 bars.
-    let mut drummer = SuperDrummer::new(vec![
-        create_drummer_only(kick_h.clone(), 1.0, generate_kick_beat()),
-        create_drummer_only(snare_h.clone(), 1.0, generate_snare_beat()),
-        create_drummer_only(hihat_h.clone(), 0.7, generate_hihat_beat()),
-    ]);
     let kick808: Handle<bevy_seedling::prelude::AudioSample> =
         asset_server.load("samples/glicol/808bd.wav");
     let snare808: Handle<bevy_seedling::prelude::AudioSample> =
         asset_server.load("samples/glicol/808sd.wav");
     let hat808: Handle<bevy_seedling::prelude::AudioSample> =
         asset_server.load("samples/glicol/808oh.wav");
+
+    let mut drummer = SuperDrummer::new(vec![
+        create_drummer_only(kick_h.clone(), 1.0, generate_kick_beat()),
+        create_drummer_only(snare_h.clone(), 1.0, generate_snare_beat()),
+        create_drummer_only(hihat_h.clone(), 0.7, generate_hihat_beat()),
+    ]);
     drummer.auto_time_feel = true;
     drummer.half_time_drums = vec![
         create_drummer_only(kick_h.clone(), 1.0, generate_half_time_kick_beat()),
@@ -475,22 +512,28 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         create_drummer_only(snare_h.clone(), 1.0, generate_snare_fill_beat()),
         create_drummer_only(hihat_h.clone(), 0.6, generate_hihat_beat()),
     ]);
-    commands.spawn(Musician::new("Drummer".to_string(), drummer));
 
-    // Bassist: proximity-biased voice leading + 2-bar melodic memory.
+    let drummer_entity = commands.spawn(Musician::new("Drummer".to_string(), drummer)).id();
+
     let mut bassist = Bassist::new(Sampler { handle: bass_h, volume: 0.7 });
     bassist.memory_bars = 2;
     bassist.memory_repeats = 2;
-    commands.spawn(Musician::new("Bassist".to_string(), bassist));
+    let bassist_entity = commands.spawn(Musician::new("Bassist".to_string(), bassist)).id();
 
-    // Arpeggiator: Auto mode (Up → PingPong → Random) and scale runs.
-    let mut arp = Arpeggiator::new(Sampler { handle: pad_h, volume: 0.4 });
+    // volume reduced from 0.4 — pad.wav is inherently loud
+    let mut arp = Arpeggiator::new(Sampler { handle: pad_h, volume: -4.0 });
     arp.use_scale_runs = true;
-    commands.spawn(Musician::new("Arpeggiator".to_string(), arp));
+    let arp_entity = commands.spawn(Musician::new("Arpeggiator".to_string(), arp)).id();
 
-    // Soloist: AABA form with 4-bar sections (always-on in this API).
     let soloist = Soloist::new(Sampler { handle: acid_h, volume: 0.3 }, 4);
-    commands.spawn(Musician::new("Soloist".to_string(), soloist));
+    let soloist_entity = commands.spawn(Musician::new("Soloist".to_string(), soloist)).id();
+
+    commands.insert_resource(BandEntities {
+        drummer: drummer_entity,
+        bassist: bassist_entity,
+        arpeggiator: arp_entity,
+        soloist: soloist_entity,
+    });
 
     commands.insert_resource(Conductor {
         chords: generate_chords(),
@@ -512,7 +555,7 @@ impl Drop for TerminalGuard {
 fn main() {
     enable_raw_mode().expect("enable raw mode");
     execute!(io::stdout(), EnterAlternateScreen).expect("enter alternate screen");
-    let _guard = TerminalGuard; // restores terminal on exit or panic
+    let _guard = TerminalGuard;
 
     let terminal =
         Terminal::new(CrosstermBackend::new(io::stdout())).expect("create ratatui terminal");
@@ -529,6 +572,7 @@ fn main() {
         })
         .insert_resource(TuiTerminal(terminal))
         .insert_resource(VisState::default())
+        .insert_resource(MuteState::default())
         .insert_resource(NotePatterns {
             kick: generate_kick_beat(),
             snare: generate_snare_beat(),

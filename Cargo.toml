@@ -71,3 +71,11 @@ path = "examples/custom_instrument.rs"
 name = "full_band"
 path = "examples/full_band.rs"
 
+[[example]]
+name = "time_signatures"
+path = "examples/time_signatures.rs"
+
+[[example]]
+name = "epic_orchestra"
+path = "examples/epic_orchestra.rs"
+
