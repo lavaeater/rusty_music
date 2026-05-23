@@ -51,6 +51,8 @@ bevy = { version = "0.18.1", default-features = false, features = [
     "x11",
 ] }
 ratatui = "0.29"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 
 [features]
 default = []
@@ -82,4 +84,8 @@ path = "examples/epic_orchestra.rs"
 [[example]]
 name = "bevy_integration"
 path = "examples/bevy_integration.rs"
+
+[[example]]
+name = "music_machine"
+path = "examples/music_machine.rs"
 
