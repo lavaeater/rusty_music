@@ -29,7 +29,8 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use bevy::app::ScheduleRunnerPlugin;
-use bevy::asset::AssetPlugin;
+use bevy::asset::io::AssetSourceBuilder;
+use bevy::asset::{AssetApp, AssetPlugin};
 use bevy::prelude::*;
 use bevy_seedling::prelude::{AudioSample, PlaybackSettings, SamplePlayer, Volume};
 
@@ -62,6 +63,10 @@ use rusty_music::musicians::{midi_diff_to_pitch, Chord, MusicPlayer, Muted, Note
 use rusty_music::musicians::Musician;
 use rusty_music::player::Intensity;
 use rusty_music::MusicPlugin;
+
+#[path = "common/mod.rs"]
+mod common;
+use common::{disk_asset_path, EntryKind, FsBrowser};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  TOML save format
@@ -463,52 +468,16 @@ enum AppMode {
 }
 
 struct BrowserState {
-    root: PathBuf,
-    dir: PathBuf,
-    entries: Vec<BrowserEntry>,
-    selected: usize,
+    browser: FsBrowser,
     target_instrument: usize,
     append_sample: bool,
 }
 
-struct BrowserEntry {
-    path: PathBuf,
-    name: String,
-    is_dir: bool,
-}
-
-impl BrowserState {
-    fn refresh(&mut self) {
-        self.entries.clear();
-        if self.dir != self.root {
-            self.entries.push(BrowserEntry { path: self.dir.parent().unwrap_or(&self.root).to_path_buf(), name: "..".into(), is_dir: true });
-        }
-        if let Ok(rd) = std::fs::read_dir(&self.dir) {
-            let mut dirs = Vec::new();
-            let mut files = Vec::new();
-            for entry in rd.flatten() {
-                let path = entry.path();
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if name.starts_with('.') { continue; }
-                if path.is_dir() {
-                    dirs.push(BrowserEntry { path, name, is_dir: true });
-                } else if name.to_lowercase().ends_with(".wav") || name.to_lowercase().ends_with(".mp3") {
-                    files.push(BrowserEntry { path, name, is_dir: false });
-                }
-            }
-            dirs.sort_by(|a, b| a.name.cmp(&b.name));
-            files.sort_by(|a, b| a.name.cmp(&b.name));
-            self.entries.extend(dirs);
-            self.entries.extend(files);
-        }
-        self.selected = self.selected.min(self.entries.len().saturating_sub(1));
-    }
-
-    fn relative_path(&self, abs: &std::path::Path) -> String {
-        abs.strip_prefix(&self.root)
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| abs.to_string_lossy().into_owned())
-    }
+/// Where the sample browser opens: the project's `assets/` folder if present,
+/// otherwise a sensible filesystem location. From there you can roam anywhere.
+fn browser_start() -> PathBuf {
+    let assets = std::env::current_dir().unwrap_or_default().join("assets");
+    if assets.is_dir() { assets } else { FsBrowser::default_start() }
 }
 
 #[derive(Resource)]
@@ -524,6 +493,22 @@ struct AppState {
     do_rebuild: bool,
     do_chord_update: bool,
     last_draw: Option<Instant>,
+    /// Entity of a sample being auditioned from the browser, so we can cut it off.
+    browser_audition: Option<Entity>,
+}
+
+/// Load a configured sample path. Absolute paths are loaded through the `disk`
+/// asset source (anywhere on disk); relative paths resolve against `assets/`.
+fn load_sample(asset_server: &AssetServer, path: &str) -> Handle<AudioSample> {
+    if path.is_empty() {
+        return Handle::default();
+    }
+    let p = std::path::Path::new(path);
+    if p.is_absolute() {
+        asset_server.load(disk_asset_path(p))
+    } else {
+        asset_server.load(path.to_string())
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -547,7 +532,7 @@ fn spawn_musicians(
     }
 
     for cfg in &state.instruments {
-        let load = |path: String| -> Handle<AudioSample> { asset_server.load(path) };
+        let load = |path: String| -> Handle<AudioSample> { load_sample(asset_server, &path) };
         let s = |idx: usize| -> Sampler {
             Sampler {
                 handle: load(cfg.samples.get(idx).cloned().unwrap_or_default()),
@@ -600,6 +585,8 @@ fn handle_input(
     mut state: ResMut<AppState>,
     mut clock: ResMut<Clock>,
     mut intensity: ResMut<Intensity>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
 ) {
     while event::poll(Duration::ZERO).unwrap_or(false) {
         let Ok(Event::Key(key)) = event::read() else { continue; };
@@ -607,7 +594,7 @@ fn handle_input(
 
         match &mut state.mode {
             AppMode::Normal => handle_normal_input(&mut state, key.code, key.modifiers, &mut clock, &mut intensity),
-            AppMode::Browser(_) => handle_browser_input(&mut state, key.code),
+            AppMode::Browser(_) => handle_browser_input(&mut state, key.code, &mut commands, &asset_server),
             AppMode::AddNew { .. } => handle_add_input(&mut state, key.code),
             AppMode::Save { .. } => handle_save_input(&mut state, key.code),
             AppMode::Load { .. } => handle_load_input(&mut state, key.code),
@@ -667,28 +654,22 @@ fn handle_normal_input(
         }
         // Browse primary sample
         KeyCode::Char('f') | KeyCode::Char('F') => {
-            let root = std::env::current_dir().unwrap_or_default().join("assets");
-            let start = if root.exists() { root.clone() } else { std::env::current_dir().unwrap_or_default() };
-            let mut browser = BrowserState {
-                root, dir: start, entries: Vec::new(), selected: 0,
-                target_instrument: state.selected, append_sample: false,
-            };
-            browser.refresh();
-            state.mode = AppMode::Browser(browser);
+            state.mode = AppMode::Browser(BrowserState {
+                browser: FsBrowser::new(browser_start()),
+                target_instrument: state.selected,
+                append_sample: false,
+            });
         }
         // Browse secondary sample / add brass sample
         KeyCode::Char('g') | KeyCode::Char('G') => {
             let instr_kind = state.instruments.get(state.selected).map(|i| i.kind.as_str().to_owned());
             if matches!(instr_kind.as_deref(), Some("brass") | Some("cymbal")) {
-                let root = std::env::current_dir().unwrap_or_default().join("assets");
-                let start = if root.exists() { root.clone() } else { std::env::current_dir().unwrap_or_default() };
                 let append = instr_kind.as_deref() == Some("brass");
-                let mut browser = BrowserState {
-                    root, dir: start, entries: Vec::new(), selected: 0,
-                    target_instrument: state.selected, append_sample: append,
-                };
-                browser.refresh();
-                state.mode = AppMode::Browser(browser);
+                state.mode = AppMode::Browser(BrowserState {
+                    browser: FsBrowser::new(browser_start()),
+                    target_instrument: state.selected,
+                    append_sample: append,
+                });
             }
         }
         // Remove last sample (brass)
@@ -716,19 +697,27 @@ fn handle_normal_input(
             state.pending = false;
             state.status = "Applied.".into();
         }
-        // Intensity
-        KeyCode::Char('i') => intensity.0 = (intensity.0 + 0.05).min(1.0),
-        KeyCode::Char('o') => intensity.0 = (intensity.0 - 0.05).max(0.0),
-        // BPM
+        // Intensity (takes effect immediately — every musician reads it each beat)
+        KeyCode::Char('i') | KeyCode::Char('I') => {
+            intensity.0 = (intensity.0 + 0.05).min(1.0);
+            state.status = format!("Intensity → {:.2}", intensity.0);
+        }
+        KeyCode::Char('o') | KeyCode::Char('O') => {
+            intensity.0 = (intensity.0 - 0.05).max(0.0);
+            state.status = format!("Intensity → {:.2}", intensity.0);
+        }
+        // BPM (takes effect immediately — the clock retempos on the fly)
         KeyCode::Char('+') | KeyCode::Char('=') => {
             clock.tempo_bpm = (clock.tempo_bpm + 5.0).min(240.0);
             clock.beat_length = 60.0 / (clock.tempo_bpm * clock.beats);
             state.bpm = clock.tempo_bpm;
+            state.status = format!("BPM → {:.0}", clock.tempo_bpm);
         }
         KeyCode::Char('-') => {
             clock.tempo_bpm = (clock.tempo_bpm - 5.0).max(40.0);
             clock.beat_length = 60.0 / (clock.tempo_bpm * clock.beats);
             state.bpm = clock.tempo_bpm;
+            state.status = format!("BPM → {:.0}", clock.tempo_bpm);
         }
         // Cycle chord
         KeyCode::Char('c') | KeyCode::Char('C') => {
@@ -748,51 +737,89 @@ fn handle_normal_input(
     }
 }
 
-fn handle_browser_input(state: &mut AppState, code: KeyCode) {
-    let AppMode::Browser(ref mut browser) = state.mode else { return; };
+fn handle_browser_input(
+    state: &mut AppState,
+    code: KeyCode,
+    commands: &mut Commands,
+    asset_server: &AssetServer,
+) {
+    // Helper to stop any in-progress audition.
+    let stop_audition = |state: &mut AppState, commands: &mut Commands| {
+        if let Some(e) = state.browser_audition.take() {
+            commands.entity(e).try_despawn();
+        }
+    };
+
     match code {
-        KeyCode::Esc => { state.mode = AppMode::Normal; }
+        KeyCode::Esc => {
+            stop_audition(state, commands);
+            state.mode = AppMode::Normal;
+        }
         KeyCode::Up => {
-            if browser.selected > 0 { browser.selected -= 1; }
+            if let AppMode::Browser(b) = &mut state.mode { b.browser.move_up(); }
         }
         KeyCode::Down => {
-            if browser.selected + 1 < browser.entries.len() { browser.selected += 1; }
+            if let AppMode::Browser(b) = &mut state.mode { b.browser.move_down(); }
         }
+        KeyCode::Right => {
+            if let AppMode::Browser(b) = &mut state.mode { b.browser.enter_selected(); }
+        }
+        KeyCode::Backspace | KeyCode::Left => {
+            if let AppMode::Browser(b) = &mut state.mode { b.browser.go_up(); }
+        }
+        KeyCode::Char('r') | KeyCode::Char('R') => {
+            if let AppMode::Browser(b) = &mut state.mode { b.browser.toggle_recursive(); }
+        }
+        // Audition the highlighted sample.
+        KeyCode::Char(' ') => {
+            let path = if let AppMode::Browser(b) = &state.mode {
+                b.browser.selected_entry().filter(|e| e.is_file()).map(|e| e.path.clone())
+            } else {
+                None
+            };
+            if let Some(p) = path {
+                stop_audition(state, commands);
+                let handle = asset_server.load::<AudioSample>(disk_asset_path(&p));
+                let id = commands
+                    .spawn((SamplePlayer::new(handle), PlaybackSettings::default()))
+                    .id();
+                state.browser_audition = Some(id);
+            }
+        }
+        // Enter a folder, or assign the highlighted sample to the instrument.
         KeyCode::Enter => {
-            if let Some(entry) = browser.entries.get(browser.selected) {
-                if entry.is_dir {
-                    let new_dir = entry.path.clone();
-                    browser.dir = new_dir;
-                    browser.selected = 0;
-                    browser.refresh();
-                } else {
-                    // File selected
-                    let path_str = browser.relative_path(&entry.path);
-                    let target = browser.target_instrument;
-                    let append = browser.append_sample;
+            let entry = if let AppMode::Browser(b) = &state.mode {
+                b.browser.selected_entry().map(|e| (e.kind, e.path.clone()))
+            } else {
+                None
+            };
+            match entry {
+                Some((EntryKind::File, path)) => {
+                    let (target, append) = if let AppMode::Browser(b) = &state.mode {
+                        (b.target_instrument, b.append_sample)
+                    } else {
+                        (0, false)
+                    };
+                    stop_audition(state, commands);
                     state.mode = AppMode::Normal;
+                    // Store the absolute path; load_sample routes it via the disk source.
+                    let path_str = path.to_string_lossy().into_owned();
                     if let Some(instr) = state.instruments.get_mut(target) {
                         if append {
                             instr.samples.push(path_str);
+                        } else if instr.samples.is_empty() {
+                            instr.samples.push(path_str);
                         } else {
-                            if instr.samples.is_empty() { instr.samples.push(path_str); }
-                            else { instr.samples[0] = path_str; }
+                            instr.samples[0] = path_str;
                         }
                         state.pending = true;
-                        state.status = format!("Sample updated for '{}'", instr.name);
+                        state.status = format!("Sample set for '{}' — [A] to apply", instr.name);
                     }
                 }
-            }
-        }
-        KeyCode::Backspace | KeyCode::Left => {
-            // Go up
-            let AppMode::Browser(ref mut browser) = state.mode else { return; };
-            if browser.dir != browser.root {
-                if let Some(parent) = browser.dir.parent().map(|p| p.to_path_buf()) {
-                    browser.dir = parent;
-                    browser.selected = 0;
-                    browser.refresh();
+                Some(_) => {
+                    if let AppMode::Browser(b) = &mut state.mode { b.browser.enter_selected(); }
                 }
+                None => {}
             }
         }
         _ => {}
@@ -1179,23 +1206,32 @@ fn kind_color(kind: &str) -> Color {
     }
 }
 
-fn render_browser(frame: &mut ratatui::Frame, area: Rect, browser: &BrowserState) {
-    let popup = centered_rect(70, 75, area);
+fn render_browser(frame: &mut ratatui::Frame, area: Rect, bs: &BrowserState) {
+    let popup = centered_rect(72, 78, area);
     frame.render_widget(Clear, popup);
 
+    let browser = &bs.browser;
+    let view = if browser.recursive { "grouped" } else { "folder" };
     let dir_str = browser.dir.to_string_lossy();
-    let title = format!(" Sample Browser — {dir_str} ");
+    let title = format!(" Sample Browser [{view}] — {dir_str} ");
 
     let items: Vec<ListItem> = browser.entries.iter().enumerate().map(|(i, e)| {
         let selected = i == browser.selected;
-        let color = if e.is_dir { Color::Yellow } else { Color::White };
-        let icon = if e.is_dir { "📁 " } else { "🔉 " };
-        let style = if selected {
-            Style::default().fg(color).add_modifier(Modifier::BOLD).bg(Color::DarkGray)
-        } else {
-            Style::default().fg(color)
+        let indent = "  ".repeat(e.depth);
+        let (icon, color) = match e.kind {
+            EntryKind::Header => ("", Color::DarkGray),
+            EntryKind::Parent => ("⮤ ", Color::Yellow),
+            EntryKind::Dir => ("📁 ", Color::Yellow),
+            EntryKind::File => ("🔉 ", Color::White),
         };
-        ListItem::new(Line::from(Span::styled(format!(" {} {}", icon, e.name), style)))
+        let mut style = Style::default().fg(color);
+        if e.kind == EntryKind::Header {
+            style = style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+        }
+        if selected {
+            style = style.add_modifier(Modifier::BOLD).bg(Color::DarkGray);
+        }
+        ListItem::new(Line::from(Span::styled(format!(" {indent}{icon}{}", e.label), style)))
     }).collect();
 
     let rows = Layout::vertical([Constraint::Min(5), Constraint::Length(3)]).split(popup);
@@ -1207,10 +1243,12 @@ fn render_browser(frame: &mut ratatui::Frame, area: Rect, browser: &BrowserState
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(" [↑↓] ", Style::default().fg(Color::Yellow)), Span::raw("navigate  "),
-            Span::styled("[Enter] ", Style::default().fg(Color::Green)), Span::raw("select/enter dir  "),
-            Span::styled("[Backspace] ", Style::default().fg(Color::Yellow)), Span::raw("up  "),
-            Span::styled("[Esc] ", Style::default().fg(Color::Red)), Span::raw("cancel"),
+            Span::styled(" [↑↓]", Style::default().fg(Color::Yellow)), Span::raw(" nav  "),
+            Span::styled("[Enter/→]", Style::default().fg(Color::Green)), Span::raw(" open dir / pick file  "),
+            Span::styled("[Space]", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)), Span::raw(" play  "),
+            Span::styled("[R]", Style::default().fg(Color::Magenta)), Span::raw(" group  "),
+            Span::styled("[⌫/←]", Style::default().fg(Color::Yellow)), Span::raw(" up  "),
+            Span::styled("[Esc]", Style::default().fg(Color::Red)), Span::raw(" cancel"),
         ])).block(Block::new().borders(Borders::ALL)),
         rows[1],
     );
@@ -1327,10 +1365,11 @@ fn main() {
     };
 
     App::new()
-        .add_plugins((
-            MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_millis(1))),
-            AssetPlugin::default(),
-        ))
+        .add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_millis(1))))
+        // The `disk` source is rooted at `/`, so the browser can load any sample
+        // anywhere on disk via `disk://<absolute-path-without-leading-slash>`.
+        .register_asset_source("disk", AssetSourceBuilder::platform_default("/", None))
+        .add_plugins(AssetPlugin::default())
         .add_plugins(MusicPlugin { beats: 4, note_type: 4, bpm })
         .insert_resource(TuiTerminal(terminal))
         .insert_resource(Intensity(0.3))
@@ -1346,6 +1385,7 @@ fn main() {
             do_rebuild: true,
             do_chord_update: true,
             last_draw: None,
+            browser_audition: None,
         })
         .add_systems(Startup, setup)
         .add_systems(Update, (handle_input, apply_changes.after(handle_input), draw_tui.after(apply_changes)))
