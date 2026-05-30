@@ -17,11 +17,16 @@
 //!   [N]          add new instrument
 //!   [Del]        remove selected instrument
 //!   [A]          apply all changes & rebuild musicians
-//!   [I]/[O]      intensity up / down
-//!   [+]/[-]      BPM up / down
+//!   [I]/[O]      intensity up / down  (live — no [A] needed)
+//!   [+]/[-]      BPM up / down        (live — no [A] needed)
 //!   [C]          cycle chord progression
 //!   [S]          save to TOML   [L] load from TOML
 //!   [Q]/Esc      quit
+//!
+//! Sample browser (open with [F]/[G]): roams anywhere on disk.
+//!   ↑/↓ move · Enter/→ open folder or pick file · ⌫/← up a folder
+//!   [Space] audition the highlighted sample · [R] toggle grouped recursive view
+//! Picked samples are stored by absolute path and loaded via the `disk` source.
 
 use std::collections::HashMap;
 use std::io::{self, Stdout};
