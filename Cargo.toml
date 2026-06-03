@@ -82,6 +82,10 @@ name = "epic_orchestra"
 path = "examples/epic_orchestra.rs"
 
 [[example]]
+name = "real_orchestra"
+path = "examples/real_orchestra.rs"
+
+[[example]]
 name = "bevy_integration"
 path = "examples/bevy_integration.rs"
 

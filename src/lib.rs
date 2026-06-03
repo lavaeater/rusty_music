@@ -16,6 +16,7 @@ pub mod player;
 
 pub mod conductor;
 pub mod musicians;
+pub mod sampler;
 
 pub struct MusicPlugin {
     pub beats: u32,
