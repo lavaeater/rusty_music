@@ -524,6 +524,14 @@ mod tests {
         assert!(has("cello", &|s| s.articulation == "arco-normal"
             && matches!(s.duration.as_str(), "1" | "15" | "long")));
         assert!(has("trombone", &|s| s.articulation == "normal"));
+        // Woodwind choir: flute runs/sustains, plus clarinet, bassoon, oboe pads.
+        assert!(has("flute", &|s| s.articulation == "normal"
+            && matches!(s.duration.as_str(), "025" | "05")));
+        assert!(has("flute", &|s| s.articulation == "normal"
+            && matches!(s.duration.as_str(), "1" | "15" | "long")));
+        assert!(has("clarinet", &|s| s.articulation == "normal"));
+        assert!(has("bassoon", &|s| s.articulation == "normal"));
+        assert!(has("oboe", &|s| s.articulation == "normal"));
         // The percussion handles real_orchestra resolves.
         assert!(has("bass drum", &|s| s.articulation == "struck-singly"));
         assert!(has("clash cymbals", &|s| s.articulation == "struck-together"));

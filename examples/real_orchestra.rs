@@ -7,13 +7,18 @@
 //! swaps articulation + dynamic *samples* as intensity rises — so both the
 //! playing style and the timbre change, not just the volume.
 //!
-//! Five layers enter progressively as intensity rises:
+//! Layers enter progressively as intensity rises:
 //!
 //!   0.00–0.13  Silence
-//!   0.13–0.32  Cellos sustain + violin pizzicato       (soft, sparse)
-//!   0.32–0.58  Violin spiccato ostinato joins          (driving 8ths)
-//!   0.58–0.78  Brass chord stabs + string sustains     (legato, fuller)
-//!   0.78–1.00  Climax: string tremolo, 16ths, full percussion, ff samples
+//!   0.13–0.30  Cellos sustain + violin pizzicato        (soft, sparse)
+//!   0.30–0.45  Clarinet harmony pad joins under strings
+//!   0.45–0.58  Violin spiccato ostinato + flute runs    (driving 8ths)
+//!   0.58–0.78  Brass chord stabs + bassoon + sustains   (legato, fuller)
+//!   0.78–1.00  Climax: string tremolo, oboe, 16ths, full percussion, ff samples
+//!
+//! Woodwind choir (flute / oboe / clarinet / bassoon) layers in by role: flute
+//! sparkles offbeat scale runs, clarinet + bassoon fill harmony, oboe adds
+//! reedy upper colour at the peak.
 //!
 //! Controls:
 //!   ↑ / ↓     raise / lower intensity manually
@@ -445,6 +450,7 @@ struct VisState {
     last_sixteenth_count: u32,
     cello_flash: u8,
     violin_flash: u8,
+    wood_flash: u8,
     brass_flash: u8,
     perc_flash: u8,
     cymbal_flash: u8,
@@ -465,6 +471,7 @@ fn update_vis(clock: Res<Clock>, intensity: Res<Intensity>, mut vis: ResMut<VisS
 
     vis.cello_flash = vis.cello_flash.saturating_sub(1);
     vis.violin_flash = vis.violin_flash.saturating_sub(1);
+    vis.wood_flash = vis.wood_flash.saturating_sub(1);
     vis.brass_flash = vis.brass_flash.saturating_sub(1);
     vis.perc_flash = vis.perc_flash.saturating_sub(1);
     vis.cymbal_flash = vis.cymbal_flash.saturating_sub(1);
@@ -473,9 +480,12 @@ fn update_vis(clock: Res<Clock>, intensity: Res<Intensity>, mut vis: ResMut<VisS
     if clock.sixteenth == 0 {
         if i >= 0.13 && (clock.beat == 0 || clock.beat == 2) { vis.cello_flash = 6; }
         vis.perc_flash = 6;
+        if i >= 0.30 && clock.beat == 0 { vis.wood_flash = 6; }
         if i >= 0.42 && (clock.beat == 0 || clock.beat == 2) { vis.brass_flash = 8; }
         if i >= 0.52 && clock.beat == 0 { vis.cymbal_flash = 7; }
     }
+    // Flute runs land on the eighth-note offbeats.
+    if i >= 0.45 && clock.sixteenth == 2 { vis.wood_flash = 4; }
     if i >= 0.13 { vis.violin_flash = 4; }
 }
 
@@ -561,7 +571,7 @@ fn draw_tui(mut terminal: ResMut<TuiTerminal>, mut vis: ResMut<VisState>, intens
 
     let snap = DrawSnap {
         bar: vis.bar, beat: vis.beat, sixteenth: vis.sixteenth,
-        cello_flash: vis.cello_flash, violin_flash: vis.violin_flash,
+        cello_flash: vis.cello_flash, violin_flash: vis.violin_flash, wood_flash: vis.wood_flash,
         brass_flash: vis.brass_flash, perc_flash: vis.perc_flash, cymbal_flash: vis.cymbal_flash,
         intensity: i, section, section_color, chord, chord_color,
         auto_mode: vis.auto_mode,
@@ -574,7 +584,7 @@ fn draw_tui(mut terminal: ResMut<TuiTerminal>, mut vis: ResMut<VisState>, intens
 
 struct DrawSnap {
     bar: u32, beat: u32, sixteenth: u32,
-    cello_flash: u8, violin_flash: u8, brass_flash: u8, perc_flash: u8, cymbal_flash: u8,
+    cello_flash: u8, violin_flash: u8, wood_flash: u8, brass_flash: u8, perc_flash: u8, cymbal_flash: u8,
     intensity: f32,
     section: &'static str, section_color: Color,
     chord: &'static str, chord_color: Color,
@@ -648,6 +658,7 @@ fn render(frame: &mut ratatui::Frame, s: &DrawSnap) {
         Paragraph::new(vec![
             layer("Cellos (low)", s.cello_flash, 0.13, Color::Blue),
             layer("Violins", s.violin_flash, 0.13, Color::Cyan),
+            layer("Woodwinds", s.wood_flash, 0.30, Color::Green),
             layer("Brass", s.brass_flash, 0.42, Color::Yellow),
             layer("Bass drum/Snare", s.perc_flash, 0.0, Color::Red),
             layer("Cymbals", s.cymbal_flash, 0.52, Color::Magenta),
@@ -753,6 +764,52 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &VoiceFilter { role: "stab", articulations: &["normal"], durations: &["025", "05", "1"], midi_range: (45, 74) }, DYNAMICS);
     report.push(("brass".into(), brass.sample_count()));
     commands.spawn(Musician::new("Brass".into(), BrassSection { sampler: brass, root_midi: 50 }));
+
+    // ── Woodwind choir ─────────────────────────────────────────────────────────
+    // All mostly `normal` articulation, so we lean on duration (run vs. sustain)
+    // and dynamic layers. Each reed enters at a different intensity in a distinct
+    // role, building flute → clarinet → bassoon → oboe into a full choir.
+    let mut woodwinds = 0usize;
+    // Flute — high offbeat scale runs + a sustained top line at the climax.
+    // Range A4–Gs6; root D5 = 74.
+    let mut flute = MultiSampler::new("flute", -6.0);
+    flute.add_voice(&library, &asset_server,
+        &VoiceFilter { role: "run", articulations: &["normal"], durations: &["025", "05"], midi_range: (72, 92) }, DYNAMICS);
+    flute.add_voice(&library, &asset_server,
+        &VoiceFilter { role: "sustain", articulations: &["normal"], durations: &["1", "15", "long"], midi_range: (72, 92) }, DYNAMICS);
+    woodwinds += flute.sample_count();
+    commands.spawn(Musician::new("Flute".into(), WoodwindSection {
+        sampler: flute, root_midi: 74, enter: 0.45, role: WoodwindRole::RunTop, seq_idx: 0,
+    }));
+
+    // Clarinet — mid harmony pad under the strings. Range A3–Gs6; root D4 = 62.
+    let mut clarinet = MultiSampler::new("clarinet", -6.0);
+    clarinet.add_voice(&library, &asset_server,
+        &VoiceFilter { role: "sustain", articulations: &["normal"], durations: &["1", "15", "long"], midi_range: (58, 82) }, DYNAMICS);
+    woodwinds += clarinet.sample_count();
+    commands.spawn(Musician::new("Clarinet".into(), WoodwindSection {
+        sampler: clarinet, root_midi: 62, enter: 0.30, role: WoodwindRole::Harmony, seq_idx: 0,
+    }));
+
+    // Bassoon — low sustain doubling the cellos. Range A2–Gs4; root D4 = 62.
+    let mut bassoon = MultiSampler::new("bassoon", -5.0);
+    bassoon.add_voice(&library, &asset_server,
+        &VoiceFilter { role: "sustain", articulations: &["normal"], durations: &["1", "15", "long"], midi_range: (45, 65) }, DYNAMICS);
+    woodwinds += bassoon.sample_count();
+    commands.spawn(Musician::new("Bassoon".into(), WoodwindSection {
+        sampler: bassoon, root_midi: 62, enter: 0.40, role: WoodwindRole::BassDouble, seq_idx: 0,
+    }));
+
+    // Oboe — reedy upper sustained color, octave above the clarinet, climax only.
+    // Range A4–Gs6; root D6 = 86 doubles the clarinet's harmony an octave up.
+    let mut oboe = MultiSampler::new("oboe", -8.0);
+    oboe.add_voice(&library, &asset_server,
+        &VoiceFilter { role: "sustain", articulations: &["normal"], durations: &["1", "15"], midi_range: (72, 92) }, DYNAMICS);
+    woodwinds += oboe.sample_count();
+    commands.spawn(Musician::new("Oboe".into(), WoodwindSection {
+        sampler: oboe, root_midi: 86, enter: 0.72, role: WoodwindRole::Harmony, seq_idx: 0,
+    }));
+    report.push(("woodwinds".into(), woodwinds));
 
     // ── Percussion: bass drum + snare via existing SuperDrummer ─────────────────
     let bd = library.resolve(&asset_server, "bass drum", &["struck-singly", "bass-drum-mallet", "rhythm"], Dynamic::Forte);
