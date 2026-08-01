@@ -1,5 +1,5 @@
 use bevy::app::{App, Plugin, Update};
-use bevy_seedling::prelude::{AudioSample, SeedlingPlugin};
+use bevy_seedling::prelude::{AudioSample, SeedlingPlugins};
 use bevy::asset::Handle;
 use std::collections::HashMap;
 use crate::clock::{Beat, Clock, progress_clock_system};
@@ -35,7 +35,7 @@ impl Default for MusicPlugin {
 
 impl Plugin for MusicPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(SeedlingPlugin::default());
+        app.add_plugins(SeedlingPlugins);
         app
             .insert_resource(Clock::new(self.beats, self.note_type, self.bpm))
             .insert_resource(Intensity(0.5))
