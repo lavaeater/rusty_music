@@ -17,6 +17,8 @@ pub mod player;
 pub mod conductor;
 pub mod musicians;
 pub mod sampler;
+#[cfg(feature = "synth")]
+pub mod synth;
 
 pub struct MusicPlugin {
     pub beats: u32,
