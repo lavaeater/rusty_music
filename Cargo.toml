@@ -100,3 +100,7 @@ path = "examples/sample_browser.rs"
 # Kept in sync with the same patch in the parent aliens-vs-suburbia manifest.
 [patch.crates-io]
 bevy_seedling = { git = "https://github.com/corvusprudens/bevy_seedling", rev = "9db62d12daa11a2ffbd9da1565154127eac0a241" }
+
+[[example]]
+name = "improv_orchestra"
+path = "examples/improv_orchestra.rs"
