@@ -125,3 +125,8 @@ required-features = ["synth"]
 name = "synth_presets"
 path = "examples/synth_presets.rs"
 required-features = ["synth"]
+
+[[example]]
+name = "synth_game"
+path = "examples/synth_game.rs"
+required-features = ["synth"]

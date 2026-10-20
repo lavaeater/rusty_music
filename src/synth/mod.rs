@@ -32,13 +32,15 @@ use engine::SynthEngine;
 
 use crate::instrument::{Channels, Instrument, NoteEvent, PlayContext};
 use crate::musicians::{MusicPlayer, Musician};
+use crate::situation::{Dim, MusicState};
 
 /// Registers [`SynthNode`] with bevy_seedling.
 pub struct SynthPlugin;
 
 impl Plugin for SynthPlugin {
     fn build(&self, app: &mut App) {
-        app.register_node::<SynthNode>();
+        app.register_node::<SynthNode>()
+            .add_systems(Update, respond_to_mood.run_if(resource_exists::<MusicState>));
     }
 }
 
@@ -277,4 +279,98 @@ pub fn spawn_synth_kit(
         kit = kit.with(SynthInstrument::on(drum).transpose(pitch - crate::instrument::SAMPLE_ROOT));
     }
     commands.spawn(Musician::new(name.into(), player).with_instrument(kit)).id()
+}
+
+// ── Responding to the situation ───────────────────────────────────────────────
+
+/// A [`SynthNode`] parameter a mood dimension can drive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SynthParam {
+    /// Hz; mapped exponentially, so equal steps sound equally brighter.
+    Cutoff,
+    Resonance,
+    /// Decibels.
+    VolumeDb,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Response {
+    pub dim: Dim,
+    pub param: SynthParam,
+    /// Value at dimension 0.
+    pub from: f32,
+    /// Value at dimension 1.
+    pub to: f32,
+}
+
+impl Response {
+    pub fn value(&self, x: f32) -> f32 {
+        let x = x.clamp(0.0, 1.0);
+        match self.param {
+            SynthParam::Cutoff if self.from > 0.0 && self.to > 0.0 => self.from * (self.to / self.from).powf(x),
+            _ => self.from + (self.to - self.from) * x,
+        }
+    }
+}
+
+/// Map mood dimensions (from [`MusicState`]) onto this entity's [`SynthNode`]:
+/// `Responds::default().cutoff(Dim::Tension, 300.0, 4_000.0).volume_db(Dim::Intensity, -30.0, -8.0)`.
+#[derive(Debug, Clone, Default, Component)]
+pub struct Responds(pub Vec<Response>);
+
+impl Responds {
+    pub fn to(mut self, dim: Dim, param: SynthParam, from: f32, to: f32) -> Self {
+        self.0.push(Response { dim, param, from, to });
+        self
+    }
+
+    pub fn cutoff(self, dim: Dim, from: f32, to: f32) -> Self {
+        self.to(dim, SynthParam::Cutoff, from, to)
+    }
+
+    pub fn resonance(self, dim: Dim, from: f32, to: f32) -> Self {
+        self.to(dim, SynthParam::Resonance, from, to)
+    }
+
+    pub fn volume_db(self, dim: Dim, from: f32, to: f32) -> Self {
+        self.to(dim, SynthParam::VolumeDb, from, to)
+    }
+}
+
+fn respond_to_mood(state: Res<MusicState>, mut synths: Query<(&Responds, &mut SynthNode)>) {
+    let mood = state.current();
+    for (responds, mut synth) in &mut synths {
+        for r in &responds.0 {
+            let value = r.value(mood.get(r.dim));
+            // Only touch the component on real changes: every write is diffed to the audio thread.
+            match r.param {
+                SynthParam::Cutoff if (synth.cutoff / value - 1.0).abs() > 0.005 => synth.cutoff = value,
+                SynthParam::Resonance if (synth.resonance - value).abs() > 0.01 => synth.resonance = value,
+                SynthParam::VolumeDb => {
+                    let current = match synth.volume {
+                        Volume::Decibels(db) => db,
+                        other => 20.0 * other.amp().max(1e-6).log10(),
+                    };
+                    if (current - value).abs() > 0.1 {
+                        synth.volume = Volume::Decibels(value);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cutoff_responds_exponentially_others_linearly() {
+        let cutoff = Response { dim: Dim::Tension, param: SynthParam::Cutoff, from: 250.0, to: 4_000.0 };
+        assert!((cutoff.value(0.5) - 1_000.0).abs() < 1.0, "geometric midpoint");
+        let vol = Response { dim: Dim::Intensity, param: SynthParam::VolumeDb, from: -30.0, to: -10.0 };
+        assert_eq!(vol.value(0.5), -20.0);
+        assert_eq!(vol.value(2.0), -10.0, "clamped");
+    }
 }

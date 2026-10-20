@@ -46,6 +46,13 @@ impl Clock {
         }
     }
 
+    /// Change tempo; takes effect from the next step.
+    pub fn set_bpm(&mut self, bpm: f32) {
+        let bpm = bpm.max(1.0);
+        self.tempo_bpm = bpm;
+        self.beat_length = (60.0 / bpm / self.beats) / (self.beats / self.note_type);
+    }
+
     /// Fractional bar position of the next step: `bar_count + beat/beats + sixteenth/beats²`.
     pub fn time_bars(&self) -> f32 {
         self.bar_count as f32

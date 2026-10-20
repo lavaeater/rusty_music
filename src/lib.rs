@@ -19,6 +19,8 @@ pub mod conductor;
 pub mod musicians;
 pub mod sampler;
 pub mod instrument;
+pub mod harmony;
+pub mod situation;
 #[cfg(feature = "synth")]
 pub mod synth;
 
@@ -45,6 +47,7 @@ impl Plugin for MusicPlugin {
             .insert_resource(Clock::new(self.beats, self.note_type, self.bpm))
             .insert_resource(Intensity(0.5))
             .add_message::<Beat>()
+            .add_message::<situation::Stinger>()
             .add_systems(Update, (progress_clock_system, play_sound_on_the_beat).chain());
     }
 }

@@ -304,6 +304,41 @@ on synths (with a sampled 808 kit), with filter cutoffs following intensity.
 | 6.5 | Per-entity music: a `Musician` attached to an enemy whose synth gets louder and brighter as it approaches (spatial nodes already exist in seedling) |
 | 6.6 | `examples/synth_game.rs`: a small Bevy 2D scene where moving towards danger audibly changes the music |
 
+#### Phase 6 results ✅ (done before Phases 4 and 5)
+
+- **6.1 `MusicState`** (`src/situation.rs`): the game writes a target `Mood`
+  (`intensity`, `tension`, `valence`, `energy`); `current()` glides towards it
+  over `response` seconds. `jolt(dim, v)` skips the glide for hits and
+  explosions; `snap()` for scene changes. `SituationPlugin` drives the old
+  `Intensity` resource from it, so every existing musician responds unchanged.
+  Location tags are not done yet: games map location to mood values themselves.
+- **6.2 Mappings**:
+  - `Layer::above(dim, threshold)`: musicians enter and leave at bar lines, with hysteresis (vertical layering).
+  - `TempoFollows { dim, slow, fast }` drives the tempo (`Clock::set_bpm`).
+  - `synth::Responds` maps dimensions onto `SynthNode` cutoff (exponential), resonance and volume.
+- **6.3 Harmony** (`src/harmony.rs`): the progression is in scale degrees.
+  `Harmony` rebuilds the conductor's chords at each phrase start. Mode follows
+  valence (Phrygian → Aeolian → Dorian → Mixolydian → Ionian → Lydian), tension
+  strengthens sevenths and ninths, and `key` changes land at the next phrase.
+- **6.4 Stingers**: send a `Stinger { musician, gesture, quantize }` message;
+  it plays on the next step, beat or bar, built from the chord sounding then
+  (`Gesture::arpeggio_up`, `chord_stab`, `dissonant_hit`, `custom`, `Notes`).
+  Stinger-only instruments are muted musicians: stingers play anyway.
+- **6.6 `examples/synth_game.rs`**: orbs, hunters and a garden sanctuary;
+  the game only writes mood and sends stingers. `-- --demo` adds an autopilot
+  and logs the musical state per bar. In a 70 s recording of the demo, layers
+  entered one by one, resting in the garden moved Aeolian → Ionian and 126 → 105
+  bpm, a level-up modulated A → B, and the peak stayed at 0.75.
+- **Not done**: 6.5 (per-entity music, e.g. an enemy's synth getting louder as
+  it approaches) works today by writing that entity's `SynthNode` from game
+  code; there is no dedicated helper yet.
+- **Found: the music only advances while `Update` runs.** A window hidden on
+  Wayland with vsync blocks every frame, and the music stalls with it (a bar
+  took 15 s). Games that keep playing music while minimised need a fix:
+  scheduling from a separate thread or schedule, or a longer look-ahead while
+  unfocused. Visible windows are unaffected.
+
+
 ---
 
 ## 5. Open questions
@@ -325,6 +360,9 @@ on synths (with a sampled 808 kit), with filter cutoffs following intensity.
 ---
 
 ## 6. Suggested order of work
+
+*Status: Phases 0, 1, 2, 3 and 6 are done; 4 (glicol text, hot reload) and
+5 (buses, reverb, ducking) remain.*
 
 Phase 0 first, because it decides the DSP backend. Then Phase 1 and Phase 2
 together, since both change the `MusicPlayer` contract and are best done in one

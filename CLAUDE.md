@@ -13,6 +13,7 @@ cargo run --example simple
 cargo run --example custom_instrument
 cargo run --example synth_band --features synth      # -- --samples for sampled drums
 cargo run --example synth_presets --features synth   # -- <name> to hear one preset
+cargo run --example synth_game --features synth      # -- --demo for autopilot + per-bar log
 
 # Check/lint
 cargo check
@@ -48,6 +49,8 @@ cargo test
 - `Bassist::default()`, `Arpeggiator::default()`, `Soloist::with_bars(n)` build them without a sampler, for use with another instrument (e.g. a synth).
 
 **Synths (`--features synth`):** `src/synth/engine.rs` is a Firewheel-free, unit-tested voice pool of `glicol_synth` graphs (constant 128-frame latency, allocation-free render path; poly with stealing, or mono/legato with a note stack and glide). `src/synth/dsp.rs` holds our own glicol `Node`s (PolyBLEP `Osc`, click-free `Env`, smoothed `Svf`, `PitchSweep`, `Sum`), used instead of glicol's `adsr`/`rlpf`/oscillators. `src/synth/patch.rs` defines `SynthPatch` (plain data, presets as functions like `SynthPatch::acid_bass()`). `src/synth/mod.rs` wraps the engine as the `SynthNode` Firewheel node (live `volume`/`cutoff`/`resonance`, smoothed on the audio thread), plus `synth(patch, db)`, `synth_musician`, `SynthInstrument::on(entity)` and `spawn_synth_kit` for drum kits. Examples needing it declare `required-features = ["synth"]`.
+
+**Situational awareness (`src/situation.rs`, `src/harmony.rs`):** `SituationPlugin` (add after `MusicPlugin`) adds `MusicState` (game writes `target: Mood { intensity, tension, valence, energy }`; music reads the smoothed `current()`, which also drives `Intensity`) and `Harmony` (progression in scale degrees; at each phrase start the mode follows valence and tension strengthens 7ths/9ths; it rebuilds the `Conductor`). `Layer` components mute/unmute musicians at bar lines; the `TempoFollows` resource drives `Clock::set_bpm`; `synth::Responds` maps mood onto `SynthNode` params. `Stinger` messages play a `Gesture` on a musician (even a `Muted` one) at the next step/beat/bar. The music only advances while `Update` runs.
 
 **Workspace:** The `macros/` crate (`bevy-rusty-music-macros`) is a proc-macro crate included in the workspace but not yet meaningfully used by the main crate.
 
