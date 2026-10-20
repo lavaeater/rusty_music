@@ -120,3 +120,8 @@ required-features = ["synth"]
 name = "synth_band"
 path = "examples/synth_band.rs"
 required-features = ["synth"]
+
+[[example]]
+name = "synth_presets"
+path = "examples/synth_presets.rs"
+required-features = ["synth"]

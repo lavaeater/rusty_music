@@ -237,6 +237,48 @@ on synths (with a sampled 808 kit), with filter cutoffs following intensity.
 | 3.4 | Built-in preset library as `.glicol` assets: sub bass, saw lead, pad (detuned saws + slow lpf), pluck (envperc), chip square, FM bell, noise hat/snare/kick (glicol's `bd`/`sn`/`hh` compounds are a head start) |
 | 3.5 | `examples/synth_band.rs`: improv_orchestra's musicians on synths. Hybrid variant: sampled drums plus synth everything else |
 
+#### Phase 3 results ✅ (with two items moved to Phase 4)
+
+- **Our own DSP nodes** (`src/synth/dsp.rs`), written as glicol `Node`s so they
+  sit in ordinary glicol graphs: PolyBLEP saw/pulse oscillators (plus sine,
+  triangle, noise, FM input), an ADSR that re-attacks from its current level
+  with exponential decay/release (no clicks on stolen or repeated notes), a
+  Simper state-variable filter (LP/HP/BP) with smoothed cutoff/Q, envelope
+  amount, key tracking and velocity, a pitch sweep for drums, and a 4-input
+  sum. They replace glicol's `adsr`, `rlpf` and naive oscillators, whose
+  problems (attack from 0, the `x0` bug, aliasing, no smoothing) are now gone.
+- **Patches are data** (`SynthPatch` in `src/synth/patch.rs`): up to four
+  oscillators (detune in cents, levels, pulse width, 2-op FM with its own
+  envelope), amp and filter envelopes, filter modulation, pitch sweep, gain,
+  `VoiceMode::{Poly, Mono, Legato}` and glide. Presets are functions:
+  `saw_lead`, `glide_lead`, `pluck`, `sub_bass`, `acid_bass`, `pad`, `chip`,
+  `bell`, `e_piano`, `kick`, `snare`, `hat` (`SynthPatch::presets()`).
+- **Voicing** (3.1): poly with stealing (idle → oldest released → oldest
+  held); mono/legato with a note stack (releasing the top note falls back to the
+  one still held) and log-frequency glide. A note-off and note-on on the same
+  frame are ordered off-first, so only *overlapping* notes slide.
+- **Live parameters** (3.3): `SynthNode { volume, cutoff, resonance }` stays the
+  `Diff`/`Patch` component; cutoff/Q glide over ~10 ms and volume ramps per
+  block, so game systems can write them every frame.
+- **Synth drum kits**: `SynthInstrument::on(entity)` plays another entity's
+  synth; `spawn_synth_kit` builds one synth per drum and a `Channels` kit, and
+  `Drummer::pattern` makes sampler-less drummers.
+- **Examples**: `synth_band` now runs a generative acid bassline (legato
+  slides), the stock arpeggiator/soloist, a pad, FM bell sparkles at high
+  intensity and a synth kit (`-- --samples` for the hybrid 808 variant).
+  `synth_presets` auditions every preset (`-- acid` for one).
+- **Measured**: 0.18–0.30% of one core per voice (release build; ~7% for a
+  30-voice band). The filter computes coefficients every 8 samples; doing it
+  per sample cost twice as much. Still zero allocations on the render path. In
+  a recording of `synth_band`, the level and the share of energy above 5 kHz
+  rise and fall with intensity, with no clipping.
+- **Moved to Phase 4**: 3.2's `#param` exposure and 3.4's presets *as `.glicol`
+  assets* both need a glicol-text front end. Presets are Rust functions for
+  now; the Phase 4 loader will build the same `SynthPatch`/graph from text.
+  The custom nodes will need registering with that front end.
+- **Not done**: improv_orchestra's own musicians on synths (they live in that
+  example file). `synth_band` covers the idea with the library's musicians.
+
 ### Phase 4 — Instruments as assets and the editor
 | # | Task |
 |---|------|

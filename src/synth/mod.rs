@@ -8,7 +8,9 @@
 //! same entity with a [`SynthInstrument`] — see [`synth_musician`]. Raw
 //! timestamped notes can also be sent with [`send_note`].
 
+pub mod dsp;
 pub mod engine;
+pub mod patch;
 
 use bevy::prelude::*;
 use bevy_seedling::firewheel::{
@@ -24,10 +26,11 @@ use bevy_seedling::firewheel::{
 };
 use bevy_seedling::prelude::{AudioContext, FirewheelNode, RegisterNode};
 
-pub use engine::{NoteMsg, SynthPatch, LATENCY};
+pub use engine::{NoteMsg, LATENCY};
+pub use patch::{Adsr, FilterMod, FilterMode, Fm, OscSpec, SynthPatch, VoiceMode, Wave};
 use engine::SynthEngine;
 
-use crate::instrument::{Instrument, NoteEvent, PlayContext};
+use crate::instrument::{Channels, Instrument, NoteEvent, PlayContext};
 use crate::musicians::{MusicPlayer, Musician};
 
 /// Registers [`SynthNode`] with bevy_seedling.
@@ -39,11 +42,12 @@ impl Plugin for SynthPlugin {
     }
 }
 
-/// Live parameters of a synth instrument. Change them from any system.
+/// Live parameters of a synth instrument. Change them from any system; the
+/// audio thread glides to new values, so per-frame changes never zipper.
 #[derive(Diff, Patch, Debug, Clone, Component)]
 pub struct SynthNode {
     pub volume: Volume,
-    /// Low-pass cutoff in Hz.
+    /// Base filter cutoff in Hz (envelope, key tracking and velocity move it per note).
     pub cutoff: f32,
     /// Filter resonance (Q).
     pub resonance: f32,
@@ -51,7 +55,22 @@ pub struct SynthNode {
 
 impl Default for SynthNode {
     fn default() -> Self {
-        Self { volume: Volume::UNITY_GAIN, cutoff: 2_000.0, resonance: 1.0 }
+        Self::for_patch(&SynthPatch::default())
+    }
+}
+
+impl SynthNode {
+    /// Unity volume, with the patch's own cutoff and resonance.
+    pub fn for_patch(patch: &SynthPatch) -> Self {
+        Self { volume: Volume::UNITY_GAIN, cutoff: patch.cutoff, resonance: patch.resonance }
+    }
+
+    pub fn volume_db(self, db: f32) -> Self {
+        Self { volume: Volume::Decibels(db), ..self }
+    }
+
+    pub fn cutoff(self, cutoff: f32) -> Self {
+        Self { cutoff, ..self }
     }
 }
 
@@ -59,13 +78,29 @@ impl Default for SynthNode {
 #[derive(Debug, Clone, PartialEq, Component)]
 pub struct SynthConfig {
     pub patch: SynthPatch,
+    /// Polyphony; mono and legato patches always use one voice.
     pub voices: usize,
 }
 
 impl Default for SynthConfig {
     fn default() -> Self {
-        Self { patch: SynthPatch::default(), voices: 8 }
+        Self::new(SynthPatch::default())
     }
+}
+
+impl SynthConfig {
+    pub fn new(patch: SynthPatch) -> Self {
+        Self { patch, voices: 8 }
+    }
+
+    pub fn voices(self, voices: usize) -> Self {
+        Self { voices, ..self }
+    }
+}
+
+/// A synth node and its config for `patch`, at `volume_db`, ready to spawn.
+pub fn synth(patch: SynthPatch, volume_db: f32) -> (SynthNode, SynthConfig) {
+    (SynthNode::for_patch(&patch).volume_db(volume_db), SynthConfig::new(patch))
 }
 
 impl AudioNode for SynthNode {
@@ -84,7 +119,8 @@ impl AudioNode for SynthNode {
     ) -> Result<impl AudioNodeProcessor, NodeError> {
         let sr = cx.stream_info.sample_rate.get() as usize;
         Ok(SynthProcessor {
-            engine: SynthEngine::new(config.patch, config.voices, sr, self.cutoff, self.resonance),
+            engine: SynthEngine::new(&config.patch, config.voices, sr, self.cutoff, self.resonance),
+            amp: self.volume.amp(),
             params: self.clone(),
             sr: sr as f64,
         })
@@ -94,6 +130,8 @@ impl AudioNode for SynthNode {
 struct SynthProcessor {
     engine: SynthEngine,
     params: SynthNode,
+    /// Gain applied at the end of the last block, ramped towards `params.volume`.
+    amp: f32,
     sr: f64,
 }
 
@@ -133,10 +171,14 @@ impl AudioNodeProcessor for SynthProcessor {
         if !self.engine.render(info.clock_samples.0, left) {
             return ProcessStatus::ClearAllOutputs;
         }
-        let amp = self.params.volume.amp();
+        // Ramp volume changes across the block instead of stepping them.
+        let target = self.params.volume.amp();
+        let step = (target - self.amp) / frames as f32;
         for s in left.iter_mut() {
-            *s *= amp;
+            self.amp += step;
+            *s *= self.amp;
         }
+        self.amp = target;
         if let Some(right) = rest.first_mut() {
             right[..frames].copy_from_slice(left);
         }
@@ -156,24 +198,41 @@ pub fn send_note(context: &mut AudioContext, node: &FirewheelNode, msg: NoteMsg,
     });
 }
 
-/// Plays notes on the [`SynthNode`] that shares the musician's entity.
+/// Plays notes on a [`SynthNode`]: by default the one sharing the musician's
+/// entity, or another entity's with [`SynthInstrument::on`].
 #[derive(Default)]
 pub struct SynthInstrument {
     next_id: u32,
     /// Semitones added to every note, to put a musician in this synth's register.
     pub transpose: f32,
+    /// Play this entity's synth instead of the musician's own.
+    pub target: Option<Entity>,
 }
 
 impl SynthInstrument {
     pub fn transposed(semitones: f32) -> Self {
-        Self { next_id: 0, transpose: semitones }
+        Self { transpose: semitones, ..default() }
+    }
+
+    /// Play the synth on `entity`.
+    pub fn on(entity: Entity) -> Self {
+        Self { target: Some(entity), ..default() }
+    }
+
+    pub fn transpose(self, semitones: f32) -> Self {
+        Self { transpose: semitones, ..self }
     }
 }
 
 impl Instrument for SynthInstrument {
     fn play(&mut self, note: &NoteEvent, at: f64, length: f64, cx: &mut PlayContext) {
         // The node gets an ID once the audio graph has picked it up; until then, rest.
-        let Some(node) = cx.node else { return };
+        let node = match self.target {
+            Some(entity) => (cx.find_node)(entity),
+            None => cx.node.copied(),
+        };
+        let Some(node) = node else { return };
+        let node = &node;
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1);
         let on = NoteMsg::On { id, midi: note.pitch + self.transpose, velocity: note.velocity * Volume::Decibels(note.gain_db).amp() };
@@ -192,4 +251,30 @@ pub fn synth_musician(
     config: SynthConfig,
 ) -> impl Bundle {
     (Musician::new(name.into(), player).with_instrument(SynthInstrument::transposed(transpose)), synth, config)
+}
+
+/// A drum kit of synths: one synth per drum, each on its own entity, played
+/// by `player` through [`NoteEvent::channel`] (channel *n* plays `drums[n]`).
+/// Each drum is `(patch, midi pitch it should sound at, volume in dB)`.
+/// Returns the musician's entity.
+///
+/// Players that write notes relative to [`crate::instrument::SAMPLE_ROOT`]
+/// (like [`Drummer`](crate::musicians::drummer::Drummer)) are transposed so
+/// each drum sounds at its pitch.
+pub fn spawn_synth_kit(
+    commands: &mut Commands,
+    name: impl Into<String>,
+    player: impl MusicPlayer + 'static,
+    drums: Vec<(SynthPatch, f32, f32)>,
+) -> Entity {
+    let mut kit = Channels::default();
+    for (patch, pitch, volume_db) in drums {
+        let name = Name::new(format!("synth drum: {}", patch.name));
+        let mut config = SynthConfig::new(patch);
+        config.voices = 2;
+        let node = SynthNode::for_patch(&config.patch).volume_db(volume_db);
+        let drum = commands.spawn((name, node, config)).id();
+        kit = kit.with(SynthInstrument::on(drum).transpose(pitch - crate::instrument::SAMPLE_ROOT));
+    }
+    commands.spawn(Musician::new(name.into(), player).with_instrument(kit)).id()
 }

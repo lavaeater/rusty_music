@@ -11,7 +11,8 @@ cargo build
 # Run examples
 cargo run --example simple
 cargo run --example custom_instrument
-cargo run --example synth_band --features synth
+cargo run --example synth_band --features synth      # -- --samples for sampled drums
+cargo run --example synth_presets --features synth   # -- <name> to hear one preset
 
 # Check/lint
 cargo check
@@ -46,7 +47,7 @@ cargo test
 - `Arpeggiator` — arpeggiated chord tones.
 - `Bassist::default()`, `Arpeggiator::default()`, `Soloist::with_bars(n)` build them without a sampler, for use with another instrument (e.g. a synth).
 
-**Synths (`--features synth`):** `src/synth/engine.rs` is a Firewheel-free, unit-tested voice pool of `glicol_synth` graphs (constant 128-frame latency, allocation-free render path); `src/synth/mod.rs` wraps it as the `SynthNode` Firewheel node. Examples needing it declare `required-features = ["synth"]`.
+**Synths (`--features synth`):** `src/synth/engine.rs` is a Firewheel-free, unit-tested voice pool of `glicol_synth` graphs (constant 128-frame latency, allocation-free render path; poly with stealing, or mono/legato with a note stack and glide). `src/synth/dsp.rs` holds our own glicol `Node`s (PolyBLEP `Osc`, click-free `Env`, smoothed `Svf`, `PitchSweep`, `Sum`), used instead of glicol's `adsr`/`rlpf`/oscillators. `src/synth/patch.rs` defines `SynthPatch` (plain data, presets as functions like `SynthPatch::acid_bass()`). `src/synth/mod.rs` wraps the engine as the `SynthNode` Firewheel node (live `volume`/`cutoff`/`resonance`, smoothed on the audio thread), plus `synth(patch, db)`, `synth_musician`, `SynthInstrument::on(entity)` and `spawn_synth_kit` for drum kits. Examples needing it declare `required-features = ["synth"]`.
 
 **Workspace:** The `macros/` crate (`bevy-rusty-music-macros`) is a proc-macro crate included in the workspace but not yet meaningfully used by the main crate.
 

@@ -17,7 +17,7 @@ use bevy_seedling::prelude::*;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
-use rusty_music::synth::{send_note, NoteMsg, SynthConfig, SynthNode, SynthPatch, SynthPlugin};
+use rusty_music::synth::{send_note, synth, NoteMsg, SynthNode, SynthPatch, SynthPlugin};
 
 const BPM: f64 = 110.0;
 /// 16th notes per second.
@@ -59,16 +59,10 @@ fn main() {
 }
 
 fn setup(mut commands: Commands) {
-    let synth = |patch, voices, cutoff, db| {
-        (
-            SynthNode { volume: Volume::Decibels(db), cutoff, resonance: 1.2 },
-            SynthConfig { patch, voices },
-        )
-    };
-    commands.spawn((Part::Bass, synth(SynthPatch::SubBass, 4, 600.0, -4.0)));
-    commands.spawn((Part::Pluck, synth(SynthPatch::Pluck, 8, 1_200.0, -8.0)));
-    commands.spawn((Part::Pad, synth(SynthPatch::Pad, 8, 1_500.0, -10.0)));
-    commands.spawn((Part::Lead, synth(SynthPatch::SawLead, 4, 2_500.0, -9.0)));
+    commands.spawn((Part::Bass, synth(SynthPatch::sub_bass(), -4.0)));
+    commands.spawn((Part::Pluck, synth(SynthPatch::pluck(), -8.0)));
+    commands.spawn((Part::Pad, synth(SynthPatch::pad(), -6.0)));
+    commands.spawn((Part::Lead, synth(SynthPatch::saw_lead(), -9.0)));
 }
 
 /// Look-ahead scheduler: every frame, queue all 16th steps that fall inside the

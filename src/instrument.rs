@@ -4,7 +4,7 @@
 //! Swapping a musician's instrument (sample → multisample → synth) never
 //! touches the musician's logic.
 
-use bevy::prelude::{Commands, Time};
+use bevy::prelude::{Commands, Entity, Time};
 use bevy_seedling::node::events::AudioEvents;
 use bevy_seedling::prelude::{
     Audio, AudioContext, FirewheelNode, InstantSeconds, PlaybackSettings, SamplePlayer, Volume,
@@ -78,6 +78,9 @@ pub struct PlayContext<'a, 'w, 's> {
     pub time: &'a Time<Audio>,
     /// The Firewheel node on the musician's entity, if it has one (synths).
     pub node: Option<&'a FirewheelNode>,
+    /// Look up the Firewheel node of any entity, for instruments that play a
+    /// node elsewhere (e.g. one synth per drum in a kit).
+    pub find_node: &'a dyn Fn(Entity) -> Option<FirewheelNode>,
 }
 
 pub trait Instrument: Send + Sync {

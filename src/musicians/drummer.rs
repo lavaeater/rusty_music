@@ -107,6 +107,11 @@ impl Drummer {
     pub fn new(sampler: Sampler, notes: HashMap<(u32, u32), Note>) -> Self {
         Self { notes, sampler: Some(sampler) }
     }
+
+    /// A drummer with no sound of its own, for kits played by another instrument.
+    pub fn pattern(notes: HashMap<(u32, u32), Note>) -> Self {
+        Self { notes, sampler: None }
+    }
 }
 
 impl MusicPlayer for Drummer {
