@@ -24,6 +24,10 @@ cargo clippy
 cargo test
 ```
 
+## Using rusty_music in a game
+
+`.claude/skills/rusty-music/SKILL.md` is a Claude Code skill with step-by-step instructions for integrating this crate into a Bevy 0.19 game (dependencies and the required `[patch.crates-io]`, plugins, band setup, mapping game state to `MusicState`, stingers, mixing, glicol files, verification). Copy that folder into a game's `.claude/skills/` (or `~/.claude/skills/` for all projects) so Claude uses it there. Keep it in sync when public APIs change; its code is meant to compile as written.
+
 ## Architecture
 
 `rusty_music` is a Bevy plugin (`MusicPlugin`) for generative/improvisational game music. Audio goes through `bevy_seedling` (Firewheel); the optional `synth` feature adds glicol-based synthesizers (`src/synth/`). See `synth-roadmap.md` for where this is heading.
