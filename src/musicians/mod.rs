@@ -38,6 +38,14 @@ pub trait MusicPlayer: Send + Sync {
     /// Push the notes to play on `beat` into `notes`.
     fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord);
 
+    /// Like [`MusicPlayer::play`], but also given the chord at the start of
+    /// the next bar (for approach notes and anticipation). This is what the
+    /// band calls; the default ignores `next` and calls `play`.
+    fn play_with_next(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord, next: &Chord) {
+        let _ = next;
+        self.play(beat, notes, base_intensity, chord);
+    }
+
     /// An instrument this player brings along (e.g. the sampler passed to
     /// `Drummer::new`). Used by [`Musician::new`] when none is given.
     fn take_instrument(&mut self) -> Option<Box<dyn Instrument>> {
@@ -86,7 +94,7 @@ pub struct TonalPlayer;
 
 impl TonalPlayer {
     /// Return a random note from `notes` whose strength is at least `min_strength`.
-    pub fn get_note<'a>(notes: &'a [Note], min_strength: f32) -> Option<&'a Note> {
+    pub fn get_note(notes: &[Note], min_strength: f32) -> Option<&Note> {
         notes
             .iter()
             .filter(|n| n.strength >= min_strength)

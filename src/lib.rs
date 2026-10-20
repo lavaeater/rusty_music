@@ -20,6 +20,7 @@ pub mod musicians;
 pub mod sampler;
 pub mod instrument;
 pub mod harmony;
+pub mod improv;
 pub mod situation;
 pub mod mix;
 #[cfg(feature = "synth")]

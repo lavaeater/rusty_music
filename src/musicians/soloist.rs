@@ -71,13 +71,13 @@ impl Soloist {
     fn generate_note(step: u32, chord: &Chord, intensity: f32) -> Option<Note> {
         if step == 0 {
             TonalPlayer::get_scale_note(chord, 1.0)
-        } else if step % 4 == 0 {
+        } else if step.is_multiple_of(4) {
             if rand::random::<f32>() < intensity {
                 TonalPlayer::get_scale_note(chord, 0.5)
             } else {
                 None
             }
-        } else if step % 2 == 0 {
+        } else if step.is_multiple_of(2) {
             if rand::random::<f32>() < intensity - 0.25 {
                 TonalPlayer::get_scale_note(chord, 0.25)
             } else {

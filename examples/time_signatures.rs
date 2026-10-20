@@ -214,7 +214,7 @@ fn draw_tui(
     intensity: Res<Intensity>,
 ) {
     let now = Instant::now();
-    if vis.last_draw.map_or(false, |t| now.duration_since(t).as_millis() < 33) {
+    if vis.last_draw.is_some_and(|t| now.duration_since(t).as_millis() < 33) {
         return;
     }
     vis.last_draw = Some(now);

@@ -224,11 +224,10 @@ fn remove_from_pool(state: &mut AppState) {
 
 /// Clean up audition entities once their sample has finished, so they don't pile up.
 fn reap_audition(mut state: ResMut<AppState>, players: Query<(), With<SamplePlayer>>) {
-    if let Some(e) = state.audition {
-        if players.get(e).is_err() {
+    if let Some(e) = state.audition
+        && players.get(e).is_err() {
             state.audition = None;
         }
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,7 +236,7 @@ fn reap_audition(mut state: ResMut<AppState>, players: Query<(), With<SamplePlay
 
 fn draw_tui(mut terminal: ResMut<TuiTerminal>, mut state: ResMut<AppState>) {
     let now = Instant::now();
-    if state.last_draw.map_or(false, |t| now.duration_since(t).as_millis() < 33) {
+    if state.last_draw.is_some_and(|t| now.duration_since(t).as_millis() < 33) {
         return;
     }
     state.last_draw = Some(now);

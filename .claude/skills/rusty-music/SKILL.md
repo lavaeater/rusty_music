@@ -18,7 +18,7 @@ danger/health/enemy-distance logic, menus, and event types, because step 4
 
 ```toml
 [dependencies]
-rusty_music = { git = "https://github.com/lavaeater/rusty_music", branch = "synth-spike", features = ["synth"] }
+rusty_music = { git = "https://github.com/lavaeater/rusty_music", branch = "main", features = ["synth"] }
 
 # REQUIRED: [patch] in a dependency does not propagate. bevy_seedling has no
 # crates.io release for Bevy 0.19, so the game must patch it too, at the same rev.
@@ -30,8 +30,7 @@ bevy_seedling = { git = "https://github.com/corvusprudens/bevy_seedling", rev = 
 opt-level = 3
 ```
 
-- Check the branch: if `synth-spike` has been merged, use `branch = "main"`.
-  Check the rev against rusty_music's own `Cargo.toml` `[patch.crates-io]`.
+- Check the seedling rev against rusty_music's own `Cargo.toml` `[patch.crates-io]`.
 - `features = ["synth"]` enables synths and glicol patches. Without it you
   get samples only; most of this guide assumes it.
 - For hot-reloading `.glicol` files during development, enable Bevy's
@@ -102,6 +101,17 @@ fn setup_music(mut commands: Commands, mixer: Res<Mixer>) {
 }
 ```
 
+- **Prefer the improvisers** in `rusty_music::improv` for real music: they
+  develop motifs, walk the bass into chord changes, voice-lead pads and
+  generate drum fills, deterministically per seed, over any `Harmony`:
+  `MotifSoloist::new(seed)` (lead, transpose 0), `WalkingBass::new(seed)` (-24),
+  `VoiceLedPad::new(seed).voices(3)` (-12; `.stabs()` for rhythmic chords),
+  `ChimeArp::new(seed)` (0), `GrooveDrummer::new(seed)` (kit channels
+  `improv::kit::{KICK, SNARE, HAT}` = 0, 1, 2; `.with_toms()`/`.with_crash()`
+  add channels 3/4), `Drone { interval: -12 }` (a held root, for things that hum).
+  Use them in place of `Bassist`/`Soloist`/`Arpeggiator`/`SuperDrummer` above,
+  e.g. `synth_musician("Bass", WalkingBass::new(1), -24.0, node, config)` and
+  `spawn_synth_kit_with(&mut commands, "Drums", GrooveDrummer::new(5), kit, pump)`.
 - **Transpose** puts a musician in its synth's register: musicians write
   around middle C, so bass `-24`, pads `-12`, leads `+12`.
 - **Presets**: `SynthPatch::{saw_lead, glide_lead, pluck, sub_bass, acid_bass,
@@ -188,11 +198,30 @@ Gestures: `arpeggio_up(count, every_steps, velocity)` (rewards), `chord_stab(len
 (level up, use `Quantize::Bar`), `dissonant_hit(length)` (damage), `Gesture::custom(|chord| …)`.
 Quantize: `Step` (next 16th, feels immediate), `Beat`, `Bar` (big moments).
 
+## 5b. Things in the world that make music
+
+Put a synth musician *on a game entity* (it needs a `Transform`) and give it
+`Proximity`; mark the player or camera with `MusicListener`. It then fades in
+and brightens as the listener approaches, in time and in key with the band:
+
+```rust
+use rusty_music::{improv::Drone, synth::{MusicListener, Proximity}};
+// player: commands.spawn((Player, MusicListener, Transform::default()));
+let (node, config) = synth(SynthPatch::saw_lead().named("hum"), -60.0);
+commands.spawn((Enemy, Transform::from_xyz(300.0, 0.0, 0.0),
+    synth_musician("Enemy hum", Drone { interval: -12 }, 0.0, node, config.voices(2)), Section::Fx,
+    Proximity::new(40.0, 320.0).volume(-16.0, -60.0).cutoff(250.0, 1_800.0)));
+```
+
 ## 6. Mixing
 
 `Mix` is a resource; change fields and the audio graph follows.
 - Dialogue/cutscene ducking: `mix.duck_db = 14.0;` (back to `0.0` after).
-- Location: bigger reverb in caves/halls: `mix.reverb.room_size = 0.9; mix.section(Section::Harmony).reverb_db = -6.0;`
+- Places: define named mixes once and switch between them; the mix glides:
+  `app.insert_resource(MixScenes { glide: 1.5, ..default() }.with("open", open_mix).with("cave", cave_mix))`,
+  then `scenes.activate("cave")` from a game system (`ResMut<MixScenes>`). Build
+  each scene from `Mix::default()` and change e.g. `reverb.room_size`, section sends.
+- One-off tweaks: `mix.reverb.room_size = 0.9; mix.section(Section::Harmony).reverb_db = -6.0;`
 - Per-section level/pan/sends: `mix.section(Section::Lead).volume_db = -3.0;`
 - Echo length is in steps (`mix.echo.steps = 3.0` = dotted eighth) and follows tempo.
 - Only write `Mix` when a value actually changes (change detection drives graph updates).
@@ -221,12 +250,16 @@ Map knobs to mood with `Responds::default().knob(Dim::Tension, index, from, to)`
 
 ## Known limitations
 
-- The music advances only while Bevy's `Update` runs. A hidden window with
-  vsync (Wayland) can block frames and stall the music; a minimised game goes quiet.
-- Beats are scheduled ~0.1 s ahead, so UI that reads `Clock` runs slightly early.
+- The music advances only while Bevy's `Update` runs. The clock bridges slow
+  frames by scheduling further ahead (up to `Clock::max_lookahead`, 1.5 s), so
+  a hidden window updating once a second still plays normally; a game whose
+  updates stop entirely goes quiet.
+- Beats are scheduled ahead (~0.1 s, more when frames are slow), so UI that
+  reads `Clock` runs slightly early, and mood changes are heard that much later.
 - Synth cost is ~0.2–0.3 % of a core per sounding voice; keep `voices` modest
   (`SynthConfig::voices`, default 8; mono/legato patches use 1).
 
 Reference implementations in the rusty_music repo: `examples/synth_game.rs`
-(complete game integration: mood mapping, layers, stingers, mix, ducking),
+(complete game integration: improvising band, mood mapping, layers, stingers,
+humming enemies with `Proximity`, mix scenes, ducking),
 `examples/synth_live.rs` (glicol files + knobs), `examples/synth_band.rs`.

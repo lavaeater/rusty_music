@@ -111,7 +111,7 @@ impl MusicPlayer for OstinatoStrings {
                         else if base_intensity < 0.68 { 2 } // 8th notes
                         else { 1 };                          // 16th notes
 
-        if TonalPlayer::flat_step(&beat) % step != 0 {
+        if !TonalPlayer::flat_step(&beat).is_multiple_of(step) {
             return;
         }
 
@@ -185,12 +185,11 @@ struct CymbalLayer;
 impl MusicPlayer for CymbalLayer {
     fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
         // Crash on downbeat of every 2nd bar (every bar at climax)
-        if beat.beat == 0 && beat.sixteenth == 0 && base_intensity > 0.52 {
-            if beat.bar_count % 2 == 0 || base_intensity > 0.82 {
+        if beat.beat == 0 && beat.sixteenth == 0 && base_intensity > 0.52
+            && (beat.bar_count.is_multiple_of(2) || base_intensity > 0.82) {
                 let vol = -8.0 + (base_intensity - 0.52).max(0.0) / 0.48 * 9.0;
                 notes.push(NoteEvent::from_diff(0).gain_db(vol).channel(0));
             }
-        }
         // Ride shimmer on off-beats at medium intensity
         if base_intensity > 0.48 && beat.sixteenth == 2 && beat.beat % 2 == 1 {
             notes.push(NoteEvent::from_diff(0).gain_db(-6.0 + base_intensity * 3.0).channel(1));

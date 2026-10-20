@@ -119,20 +119,20 @@ fn update_vis(
     let key = (clock.beat, clock.sixteenth);
 
     if !mutes.drummer {
-        if patterns.kick.get(&key).map_or(false, |n: &Note| n.strength >= min_strength) {
+        if patterns.kick.get(&key).is_some_and(|n: &Note| n.strength >= min_strength) {
             vis.kick_flash = 5;
         }
-        if patterns.snare.get(&key).map_or(false, |n: &Note| n.strength >= min_strength) {
+        if patterns.snare.get(&key).is_some_and(|n: &Note| n.strength >= min_strength) {
             vis.snare_flash = 5;
         }
-        if patterns.hihat.get(&key).map_or(false, |n: &Note| n.strength >= min_strength) {
+        if patterns.hihat.get(&key).is_some_and(|n: &Note| n.strength >= min_strength) {
             vis.hihat_flash = 4;
         }
     }
     if !mutes.bassist && clock.sixteenth == 0 {
         vis.bass_flash = 6;
     }
-    if !mutes.arpeggiator && clock.sixteenth % 2 == 0 {
+    if !mutes.arpeggiator && clock.sixteenth.is_multiple_of(2) {
         vis.arp_flash = 4;
     }
     if !mutes.soloist && clock.beat == 0 && clock.sixteenth == 0 {
@@ -201,7 +201,7 @@ fn draw_tui(
     mutes: Res<MuteState>,
 ) {
     let now = Instant::now();
-    if vis.last_draw.map_or(false, |t| now.duration_since(t).as_millis() < 33) {
+    if vis.last_draw.is_some_and(|t| now.duration_since(t).as_millis() < 33) {
         return;
     }
     vis.last_draw = Some(now);

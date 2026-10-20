@@ -1,12 +1,22 @@
 use bevy::prelude::Resource;
 use crate::musicians::Chord;
 
-#[derive(Resource)]
+#[derive(Resource, Debug, Clone)]
 pub struct Conductor {
     /// Sorted list of chords by `pos_bars`. Must have at least one entry.
     pub chords: Vec<Chord>,
     /// Total length of the chord progression in bars before it loops.
     pub chord_length_bars: f32,
+}
+
+/// Chords that take over from the [`Conductor`] at an exact bar. Beats are
+/// emitted ahead of time, so one update can carry beats from both sides of a
+/// phrase boundary; this keeps each beat on the right chords.
+#[derive(Resource, Debug, Clone)]
+pub struct UpcomingChords {
+    /// Absolute bar position (`Beat::time_bars`) from which these chords apply.
+    pub from_bars: f32,
+    pub conductor: Conductor,
 }
 
 impl Conductor {

@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn hihat_quarter_plays_at_low_intensity() {
         let hihat = generate_hihat_beat();
-        assert!(passes(&notes_at(&hihat, 0, 0)[0], 0.3));
+        assert!(passes(notes_at(&hihat, 0, 0)[0], 0.3));
     }
 
     #[test]
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn half_time_gating_skips_odd_sixteenth_counts() {
         let gate = |intensity: f32, sixteenth_count: u32| -> bool {
-            intensity < 0.3 && sixteenth_count % 2 != 0
+            intensity < 0.3 && !sixteenth_count.is_multiple_of(2)
         };
         assert!(gate(0.2, 1));
         assert!(!gate(0.2, 0));

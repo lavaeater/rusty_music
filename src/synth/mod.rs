@@ -48,7 +48,8 @@ impl Plugin for SynthPlugin {
         asset::plugin(app);
         app.register_node::<SynthNode>()
             .add_systems(Last, route_to_sections.before(SeedlingSystems::Acquire))
-            .add_systems(Update, respond_to_mood.run_if(resource_exists::<MusicState>));
+            .add_systems(Update, respond_to_mood.run_if(resource_exists::<MusicState>))
+            .add_systems(Update, follow_proximity.after(respond_to_mood));
     }
 }
 
@@ -482,9 +483,78 @@ fn respond_to_mood(state: Res<MusicState>, mut synths: Query<(&Responds, &mut Sy
     }
 }
 
+// ── Per-entity music ─────────────────────────────────────────────────────────
+
+/// Where the music is heard from for [`Proximity`]: usually the player or camera.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct MusicListener;
+
+/// A synth on a game entity (an enemy, a machine, a shrine) that gets louder,
+/// and optionally brighter, as the [`MusicListener`] comes near. Put it on an
+/// entity with a [`SynthNode`] and a `Transform`.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct Proximity {
+    /// Distance at which it is at full presence.
+    pub near: f32,
+    /// Distance beyond which it is at its quietest.
+    pub far: f32,
+    pub near_db: f32,
+    /// -60 dB or lower is silent.
+    pub far_db: f32,
+    /// Cutoff (far, near) in Hz, if it should also open up when close.
+    pub cutoff: Option<(f32, f32)>,
+}
+
+impl Proximity {
+    pub fn new(near: f32, far: f32) -> Self {
+        Self { near, far, near_db: 0.0, far_db: -60.0, cutoff: None }
+    }
+
+    pub fn volume(self, near_db: f32, far_db: f32) -> Self {
+        Self { near_db, far_db, ..self }
+    }
+
+    pub fn cutoff(self, far_hz: f32, near_hz: f32) -> Self {
+        Self { cutoff: Some((far_hz, near_hz)), ..self }
+    }
+
+    /// 0 at `far` or beyond, 1 at `near` or closer, eased in between.
+    pub fn closeness(&self, distance: f32) -> f32 {
+        let t = ((self.far - distance) / (self.far - self.near).max(1e-3)).clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    }
+}
+
+fn follow_proximity(listener: Query<&GlobalTransform, With<MusicListener>>, mut synths: Query<(&Proximity, &GlobalTransform, &mut SynthNode)>) {
+    let Some(ear) = listener.iter().next() else { return };
+    for (prox, at, mut synth) in &mut synths {
+        let t = prox.closeness(ear.translation().distance(at.translation()));
+        let db = prox.far_db + (prox.near_db - prox.far_db) * t;
+        let volume = if db <= -60.0 { Volume::SILENT } else { Volume::Decibels(db) };
+        if synth.volume != volume && (synth.volume.amp() - volume.amp()).abs() > 1e-4 {
+            synth.volume = volume;
+        }
+        if let Some((far_hz, near_hz)) = prox.cutoff {
+            let cutoff = far_hz * (near_hz / far_hz).powf(t);
+            if (synth.cutoff / cutoff - 1.0).abs() > 0.005 {
+                synth.cutoff = cutoff;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn proximity_eases_from_far_to_near() {
+        let p = Proximity::new(50.0, 300.0);
+        assert_eq!(p.closeness(400.0), 0.0);
+        assert_eq!(p.closeness(10.0), 1.0);
+        assert!((p.closeness(175.0) - 0.5).abs() < 1e-6);
+        assert!(p.closeness(100.0) > p.closeness(200.0));
+    }
 
     #[test]
     fn cutoff_responds_exponentially_others_linearly() {

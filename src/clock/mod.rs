@@ -5,10 +5,17 @@ use bevy_seedling::prelude::{Audio, AudioTime};
 const START_DELAY: f64 = 0.05;
 /// A step this far behind the audio clock is skipped rather than played late.
 const MAX_LATENESS: f64 = 0.05;
+/// Seconds for the remembered worst frame gap to halve once frames are quick again.
+const GAP_HALF_LIFE: f64 = 2.0;
 
 /// The musical clock. It runs on the *audio* clock (`Time<Audio>`) and emits
 /// each step as a [`Beat`] `lookahead` seconds before it should sound, stamped
 /// with its exact audio time, so instruments can schedule sample-accurately.
+///
+/// Steps are only emitted while `Update` runs. When frames slow down (a
+/// hidden or minimised window can drop to ~1 frame per second), the clock
+/// schedules further ahead, up to `max_lookahead`, so the music keeps playing
+/// through the gaps; it tightens back to `lookahead` once frames are quick again.
 #[derive(Debug, Clone, Copy, Resource)]
 pub struct Clock {
     pub beats: f32,
@@ -17,8 +24,15 @@ pub struct Clock {
     pub playing: bool,
     /// Length of one step (a 16th in 4/4) in seconds. Change it to change tempo.
     pub beat_length: f32,
-    /// How far ahead of the audio clock steps are emitted, in seconds.
+    /// How far ahead of the audio clock steps are emitted, in seconds, at
+    /// normal frame rates. Lower means game changes are heard sooner.
     pub lookahead: f64,
+    /// The furthest ahead the clock will schedule to bridge slow frames.
+    pub max_lookahead: f64,
+    /// The longest recent gap between updates (decays over time), in seconds.
+    pub frame_gap: f64,
+    /// Audio time of the previous update.
+    pub last_update: Option<f64>,
     /// Audio time of the next step to emit; `None` until the clock starts.
     pub next_time: Option<f64>,
     pub sixteenth: u32,
@@ -37,6 +51,9 @@ impl Clock {
             playing: true,
             beat_length: (60.0 / bpm / beats as f32) / (beats as f32 / note_type as f32),
             lookahead: 0.1,
+            max_lookahead: 1.5,
+            frame_gap: 0.0,
+            last_update: None,
             next_time: None,
             sixteenth: 0,
             bar_count: 0,
@@ -44,6 +61,23 @@ impl Clock {
             beat_count: 0,
             sixteenth_count: 0,
         }
+    }
+
+    /// Record that a frame happened at audio time `now`; call once per update,
+    /// before draining [`Clock::next_step`].
+    pub fn observe_frame(&mut self, now: f64) {
+        if let Some(last) = self.last_update {
+            let gap = (now - last).max(0.0);
+            let decayed = self.frame_gap * 0.5f64.powf(gap / GAP_HALF_LIFE);
+            self.frame_gap = gap.max(decayed);
+        }
+        self.last_update = Some(now);
+    }
+
+    /// How far ahead steps are emitted right now: enough to bridge the
+    /// slowest recent frame gap, within `lookahead..=max_lookahead`.
+    pub fn effective_lookahead(&self) -> f64 {
+        (self.frame_gap * 1.5 + 0.02).clamp(self.lookahead, self.max_lookahead.max(self.lookahead))
     }
 
     /// Change tempo; takes effect from the next step.
@@ -67,7 +101,7 @@ impl Clock {
             return None;
         }
         let mut time = self.next_time.unwrap_or(now + START_DELAY);
-        if time >= now + self.lookahead {
+        if time >= now + self.effective_lookahead() {
             return None;
         }
         if time < now - MAX_LATENESS {
@@ -125,6 +159,7 @@ pub fn progress_clock_system(
     mut beat_sender: MessageWriter<Beat>,
 ) {
     let now = time.now().0;
+    clock.observe_frame(now);
     while let Some(beat) = clock.next_step(now) {
         beat_sender.write(beat);
     }
@@ -207,6 +242,41 @@ mod tests {
         let late = steps(&mut clock, 5.0);
         assert_eq!(late.len(), 1, "a stall must not flush a backlog of steps");
         assert!(late[0].time >= 5.0);
+    }
+
+    #[test]
+    fn slow_frames_stretch_the_lookahead_so_music_keeps_going() {
+        let mut clock = make_clock();
+        let mut beats = Vec::new();
+        let frame = |clock: &mut Clock, now: f64, beats: &mut Vec<Beat>| {
+            clock.observe_frame(now);
+            beats.extend(steps(clock, now));
+        };
+        // 2 s at 60 fps, then the window is hidden: one frame per second for 10 s.
+        let mut now = 0.0;
+        while now < 2.0 {
+            frame(&mut clock, now, &mut beats);
+            now += 1.0 / 60.0;
+        }
+        assert!(clock.effective_lookahead() < 0.11, "tight at 60 fps");
+        for _ in 0..10 {
+            now += 1.0;
+            frame(&mut clock, now, &mut beats);
+        }
+        // The first unexpected 1 s stall forces one resync; after that the
+        // grid must be unbroken: every step exactly one step after the last.
+        let after = beats.iter().position(|b| b.time > 3.5).unwrap();
+        for pair in beats[after..].windows(2) {
+            assert!((pair[1].time - pair[0].time - 0.125).abs() < 1e-9, "gap at {}", pair[0].time);
+        }
+        assert!(beats.last().unwrap().time > now, "scheduled past the latest frame");
+
+        // Back at 60 fps, the lookahead shrinks again within seconds.
+        for _ in 0..(8 * 60) {
+            now += 1.0 / 60.0;
+            frame(&mut clock, now, &mut beats);
+        }
+        assert!(clock.effective_lookahead() < 0.2, "still {}", clock.effective_lookahead());
     }
 
     #[test]

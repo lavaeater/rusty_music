@@ -228,8 +228,8 @@ impl FsBrowser {
                 }
             }
         }
-        dirs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
-        files.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+        dirs.sort_by_key(|a| a.0.to_lowercase());
+        files.sort_by_key(|a| a.0.to_lowercase());
         for (name, path) in dirs {
             self.entries.push(Entry { kind: EntryKind::Dir, path, label: name, depth: 0 });
         }
@@ -268,7 +268,7 @@ impl FsBrowser {
                     }
                 }
             }
-            files.sort_by(|a, b| a.to_string_lossy().to_lowercase().cmp(&b.to_string_lossy().to_lowercase()));
+            files.sort_by_key(|a| a.to_string_lossy().to_lowercase());
             if files.len() > budget {
                 files.truncate(budget);
             }
@@ -278,11 +278,11 @@ impl FsBrowser {
             }
             visited_dirs.push(dir);
             // Push subdirs reversed so they pop in sorted order.
-            subdirs.sort_by(|a, b| b.to_string_lossy().to_lowercase().cmp(&a.to_string_lossy().to_lowercase()));
+            subdirs.sort_by_key(|d| std::cmp::Reverse(d.to_string_lossy().to_lowercase()));
             stack.extend(subdirs);
         }
 
-        groups.sort_by(|a, b| a.0.to_string_lossy().to_lowercase().cmp(&b.0.to_string_lossy().to_lowercase()));
+        groups.sort_by_key(|a| a.0.to_string_lossy().to_lowercase());
 
         if groups.is_empty() {
             self.entries.push(Entry {
