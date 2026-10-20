@@ -1,7 +1,6 @@
-use bevy::prelude::Commands;
-use bevy_seedling::prelude::{PlaybackSettings, SamplePlayer, Volume};
 use crate::clock::Beat;
-use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler, TonalPlayer, STEPS_PER_BAR};
+use crate::instrument::{Instrument, NoteEvent};
+use crate::musicians::{Chord, MusicPlayer, Note, Sampler, TonalPlayer, STEPS_PER_BAR};
 
 /// AABA phrase form: record A, play A, play A, record B, play A, then start over.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -38,11 +37,16 @@ pub struct Soloist {
     /// `time_bars` at which the current section ends and the next begins.
     /// 0.0 means "start recording immediately".
     section_end_bar: f32,
-    sampler: Sampler,
+    sampler: Option<Sampler>,
 }
 
 impl Soloist {
     pub fn new(sampler: Sampler, record_bars: u32) -> Self {
+        Self { sampler: Some(sampler), ..Self::with_bars(record_bars) }
+    }
+
+    /// A soloist with no instrument of its own; give its `Musician` one.
+    pub fn with_bars(record_bars: u32) -> Self {
         let total = (record_bars * STEPS_PER_BAR) as usize;
         Self {
             record_bars,
@@ -50,17 +54,12 @@ impl Soloist {
             melody_b: vec![None; total],
             phase: AabaPhase::RecordA,
             section_end_bar: 0.0,
-            sampler,
+            sampler: None,
         }
     }
 
-    fn play_note(&self, note: Note, commands: &mut Commands) {
-        commands.spawn((
-            SamplePlayer::new(self.sampler.handle.clone())
-                .with_volume(Volume::Decibels(self.sampler.volume as f32)),
-            PlaybackSettings::default()
-                .with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-        ));
+    fn play_note(note: Note, notes: &mut Vec<NoteEvent>) {
+        notes.push(NoteEvent::from_diff(note.midi_note_diff).length(2.0));
     }
 
     fn recording_index(beat: &Beat, record_bars: u32) -> u32 {
@@ -93,7 +92,11 @@ impl Soloist {
 }
 
 impl MusicPlayer for Soloist {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn take_instrument(&mut self) -> Option<Box<dyn Instrument>> {
+        self.sampler.take().map(|s| Box::new(s) as Box<dyn Instrument>)
+    }
+
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         let recording_index = Self::recording_index(&beat, self.record_bars) as usize;
         let last_index = (self.record_bars * STEPS_PER_BAR - 1) as usize;
 
@@ -122,7 +125,7 @@ impl MusicPlayer for Soloist {
             }
 
             if let Some(n) = note {
-                self.play_note(n, commands);
+                Self::play_note(n, notes);
             }
 
             if recording_index >= last_index && self.section_end_bar <= 0.0 {
@@ -131,7 +134,7 @@ impl MusicPlayer for Soloist {
         } else {
             // Playback: A replays the A melody; B section is always recorded live.
             if let Some(note) = self.melody_a[recording_index] {
-                self.play_note(note, commands);
+                Self::play_note(note, notes);
             }
 
             if recording_index >= last_index && self.section_end_bar <= 0.0 {
@@ -149,14 +152,13 @@ mod tests {
 
     fn make_beat(beat: u32, sixteenth: u32, bar: u32) -> Beat {
         Beat {
-            elapsed_time: 0.0,
             beat,
             sixteenth,
             bar_count: bar,
             beat_count: bar * 4 + beat,
             sixteenth_count: bar * 16 + beat * 4 + sixteenth,
             time_bars: bar as f32 + beat as f32 / 4.0 + sixteenth as f32 / 16.0,
-            overshoot: 0.0,
+            ..Default::default()
         }
     }
 

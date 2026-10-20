@@ -42,7 +42,6 @@ use std::time::{Duration, Instant};
 use bevy::app::ScheduleRunnerPlugin;
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
-use bevy_seedling::prelude::{AudioSample, PlaybackSettings, SamplePlayer, Volume};
 use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
 use rand::{RngExt, SeedableRng};
@@ -63,7 +62,8 @@ use ratatui::{
 
 use rusty_music::clock::{progress_clock_system, Beat, Clock};
 use rusty_music::musicians::conductor::Conductor;
-use rusty_music::musicians::{midi_diff_to_pitch, Chord, MusicPlayer, Musician, Note, TonalPlayer};
+use rusty_music::instrument::{Channels, Instrument, NoteEvent, Silent};
+use rusty_music::musicians::{Chord, MusicPlayer, Musician, Note, Sampler, TonalPlayer};
 use rusty_music::player::{play_sound_on_the_beat, Intensity};
 use rusty_music::sampler::{Dynamic, MultiSampler, SampleLibrary, VoiceFilter};
 use rusty_music::MusicPlugin;
@@ -418,32 +418,24 @@ impl Mind {
     }
 }
 
-// ── Spawning helper ─────────────────────────────────────────────────────────
+// ── Note helpers ─────────────────────────────────────────────────────────────
 
-/// Spawn one note from a multisampler at the target pitch, if a sample exists.
-fn play_note(
-    commands: &mut Commands,
-    sampler: &MultiSampler,
-    target_midi: i32,
-    role: &str,
-    dynamic: Dynamic,
-    extra_db: f32,
-) {
-    if let Some((handle, residual)) = sampler.pick(target_midi, role, dynamic) {
-        commands.spawn((
-            SamplePlayer::new(handle).with_volume(Volume::Decibels(sampler.volume_db + extra_db)),
-            PlaybackSettings::default().with_speed(midi_diff_to_pitch(residual)),
-        ));
-    }
+/// A note for a multisampled section: `role` picks the articulation, the
+/// intensity picks the dynamic layer (instruments map velocity → dynamic).
+fn section_note(midi: i32, role: &'static str, intensity: f32, extra_db: f32) -> NoteEvent {
+    NoteEvent::new(midi as f32).articulation(role).velocity(intensity).gain_db(extra_db)
 }
 
-fn play_hit(commands: &mut Commands, handle: &Option<Handle<AudioSample>>, db: f32, semis: i32) {
-    if let Some(h) = handle {
-        commands.spawn((
-            SamplePlayer::new(h.clone()).with_volume(Volume::Decibels(db)),
-            PlaybackSettings::default().with_speed(midi_diff_to_pitch(semis)),
-        ));
-    }
+/// Drum kit channels, in the order the kit instrument is built.
+const KICK: usize = 0;
+const SNARE: usize = 1;
+const TOM: usize = 2;
+const CLASH: usize = 3;
+const SUSP_ROLL: usize = 4;
+
+/// A hit on kit `channel`, pitched `semis` away from the sample's own pitch.
+fn hit(channel: usize, db: f32, semis: i32) -> NoteEvent {
+    NoteEvent::from_diff(semis).gain_db(db).channel(channel)
 }
 
 fn pattern_string(p: &[f32; 16]) -> String {
@@ -631,8 +623,6 @@ impl Transform {
 struct Soloist {
     lead: Lead,
     mind: Mind,
-    violins: MultiSampler,
-    flute: MultiSampler,
     root_midi: i32,
     motif_a: Motif,
     motif_b: Motif,
@@ -683,7 +673,7 @@ impl Soloist {
 }
 
 impl MusicPlayer for Soloist {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
         let lead = self.lead.clone();
         let mut song = lead.get();
         if self.mind.wake(&song) {
@@ -735,10 +725,11 @@ impl MusicPlayer for Soloist {
         let midi = self.root_midi + pitch_of(self.pos, deg);
         let gap = self.current.0.get(idx + 1).map_or(8, |n| n.step - step);
         let role = if gap >= 6 { "sustain" } else { "short" };
-        let dynamic = Dynamic::for_intensity(i);
-        play_note(commands, &self.violins, midi, role, dynamic, -1.0 + i * 3.0 + note.weight * 2.0);
+        // Channel 0 = violins, 1 = flute doubling.
+        let lead = section_note(midi, role, i, -1.0 + i * 3.0 + note.weight * 2.0).length(gap as f32);
+        out.push(lead);
         if i > 0.65 {
-            play_note(commands, &self.flute, midi, role, dynamic, -3.0 + i * 2.0);
+            out.push(lead.gain_db(-3.0 + i * 2.0).channel(1));
         }
         song.board.melody.push_front(midi_name(midi));
         song.board.melody.truncate(12);
@@ -753,8 +744,6 @@ impl MusicPlayer for Soloist {
 struct Bass {
     lead: Lead,
     mind: Mind,
-    cello: MultiSampler,
-    contrabass: MultiSampler,
     rhythm: [[f32; 16]; 2],
 }
 
@@ -771,7 +760,7 @@ fn bass_rhythm(rng: &mut StdRng) -> [f32; 16] {
 }
 
 impl MusicPlayer for Bass {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
         let lead = self.lead.clone();
         let mut song = lead.get();
         if self.mind.wake(&song) {
@@ -807,10 +796,10 @@ impl MusicPlayer for Bass {
 
         let gap = (s + 1..16).find(|&k| rhythm[k] > 0.0).map_or(16 - s, |k| k - s);
         let role = if gap >= 6 { "sustain" } else { "short" };
-        let dynamic = Dynamic::for_intensity(i);
-        play_note(commands, &self.cello, 50 + semis, role, dynamic, -1.0 + i * 3.0);
+        // Channel 0 = cellos, 1 = double basses an octave below.
+        out.push(section_note(50 + semis, role, i, -1.0 + i * 3.0).length(gap as f32));
         if i > 0.45 {
-            play_note(commands, &self.contrabass, 38 + semis, role, dynamic, -3.0 + i * 3.0);
+            out.push(section_note(38 + semis, role, i, -3.0 + i * 3.0).length(gap as f32).channel(1));
         }
     }
 }
@@ -859,7 +848,6 @@ struct Pad {
     lead: Lead,
     mind: Mind,
     label: &'static str,
-    sampler: MultiSampler,
     center: i32,
     enter: f32,
     max_voices: usize,
@@ -884,7 +872,7 @@ fn stab_rhythm(rng: &mut StdRng) -> [f32; 16] {
 }
 
 impl MusicPlayer for Pad {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
         let lead = self.lead.clone();
         let mut song = lead.get();
         if self.mind.wake(&song) {
@@ -892,13 +880,12 @@ impl MusicPlayer for Pad {
             self.voicing.clear();
         }
         let i = base_intensity;
-        if i < self.enter || self.sampler.is_empty() {
+        if i < self.enter {
             return;
         }
         let deg = song.degree_at(beat.bar_count);
         let span = ((i - self.enter) / (1.0 - self.enter)).clamp(0.0, 1.0);
         let voices = 1 + (span * (self.max_voices - 1) as f32).round() as usize;
-        let dynamic = Dynamic::for_intensity(i);
         let s = TonalPlayer::flat_step(&beat) as usize;
 
         let new_bar = beat.bar_count != self.voiced_bar || self.voicing.len() != voices;
@@ -924,8 +911,9 @@ impl MusicPlayer for Pad {
             return;
         }
         let role = if self.stabs { "stab" } else { "sustain" };
+        let length = if self.stabs { 1.0 } else { 16.0 };
         for (k, &m) in self.voicing.iter().enumerate() {
-            play_note(commands, &self.sampler, m, role, dynamic, -1.0 - k as f32 * 1.5 + i * 2.0);
+            out.push(section_note(m, role, i, -1.0 - k as f32 * 1.5 + i * 2.0).length(length));
         }
     }
 }
@@ -945,7 +933,6 @@ enum ArpMode {
 struct Arpeggio {
     lead: Lead,
     mind: Mind,
-    sampler: MultiSampler,
     low: i32,
     modes: [ArpMode; 2],
     cells: [Vec<usize>; 2],
@@ -964,7 +951,7 @@ impl Arpeggio {
 }
 
 impl MusicPlayer for Arpeggio {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
         let lead = self.lead.clone();
         let mut song = lead.get();
         if self.mind.wake(&song) {
@@ -981,7 +968,7 @@ impl MusicPlayer for Arpeggio {
         song.board.arp = if mode == ArpMode::Cell { format!("Cell {cell:?}") } else { format!("{mode:?}") };
 
         let i = base_intensity;
-        if i < 0.3 || self.sampler.is_empty() {
+        if i < 0.3 {
             return;
         }
         let rate = if i < 0.5 { 4 } else if i < 0.8 { 2 } else { 1 };
@@ -1008,7 +995,7 @@ impl MusicPlayer for Arpeggio {
             ArpMode::Cell => cell[k % cell.len()] % len,
         };
         let role = if i < 0.5 { "pizz" } else { "short" };
-        play_note(commands, &self.sampler, pitches[at], role, Dynamic::for_intensity(i), -4.0 + i * 2.0);
+        out.push(section_note(pitches[at], role, i, -4.0 + i * 2.0).length(rate as f32));
     }
 }
 
@@ -1020,18 +1007,9 @@ enum Hit {
     Tom(i32),
 }
 
-struct Kit {
-    kick: Option<Handle<AudioSample>>,
-    snare: Option<Handle<AudioSample>>,
-    tom: Option<Handle<AudioSample>>,
-    clash: Option<Handle<AudioSample>>,
-    susp_roll: Option<Handle<AudioSample>>,
-}
-
 struct Drums {
     lead: Lead,
     mind: Mind,
-    kit: Kit,
     kick: [[f32; 16]; 2],
     snare: [[f32; 16]; 2],
     fill: Vec<(usize, Hit)>,
@@ -1092,7 +1070,7 @@ fn compose_fill(rng: &mut StdRng, intensity: f32) -> (Vec<(usize, Hit)>, String)
 }
 
 impl MusicPlayer for Drums {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
         let lead = self.lead.clone();
         let mut song = lead.get();
         if self.mind.wake(&song) {
@@ -1115,7 +1093,7 @@ impl MusicPlayer for Drums {
         let gate = 1.0 - i;
 
         if self.kick[p][s] > 0.0 && self.kick[p][s] >= gate {
-            play_hit(commands, &self.kit.kick, -1.0 + self.kick[p][s] * 2.0, 0);
+            out.push(hit(KICK, -1.0 + self.kick[p][s] * 2.0, 0));
         }
 
         let fill_bar = bar_in_section == SECTION_BARS - 1 && i > 0.3;
@@ -1127,24 +1105,24 @@ impl MusicPlayer for Drums {
         }
         let fill_start = self.fill.first().map_or(16, |(s, _)| *s);
         if fill_bar && s >= fill_start {
-            if let Some(&(_, hit)) = self.fill.iter().find(|(h, _)| *h == s) {
+            if let Some(&(_, fill_hit)) = self.fill.iter().find(|(h, _)| *h == s) {
                 let ramp = (s - fill_start) as f32 / 8.0;
-                match hit {
-                    Hit::Snare => play_hit(commands, &self.kit.snare, -3.0 + ramp * 3.0, 0),
-                    Hit::Tom(semis) => play_hit(commands, &self.kit.tom, -1.0 + ramp * 2.0, semis),
+                match fill_hit {
+                    Hit::Snare => out.push(hit(SNARE, -3.0 + ramp * 3.0, 0)),
+                    Hit::Tom(semis) => out.push(hit(TOM, -1.0 + ramp * 2.0, semis)),
                 }
             }
         } else if self.snare[p][s] > 0.0 && self.snare[p][s] >= gate {
             let v = self.snare[p][s];
-            play_hit(commands, &self.kit.snare, if v >= 0.8 { 0.0 } else { -12.0 + v * 15.0 }, 0);
+            out.push(hit(SNARE, if v >= 0.8 { 0.0 } else { -12.0 + v * 15.0 }, 0));
         }
 
         // Cymbals mark the form: clash into each section, roll into the next.
         if bar_in_section == 0 && s == 0 && i > 0.5 {
-            play_hit(commands, &self.kit.clash, -10.0 + (i - 0.5) * 18.0, 0);
+            out.push(hit(CLASH, -10.0 + (i - 0.5) * 18.0, 0));
         }
         if bar_in_section == SECTION_BARS - 1 && s == 8 && i > 0.7 {
-            play_hit(commands, &self.kit.susp_roll, -9.0 + i * 5.0, 0);
+            out.push(hit(SUSP_ROLL, -9.0 + i * 5.0, 0));
         }
     }
 }
@@ -1383,10 +1361,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, lead: Res<Lead>
         voice("sustain", &["normal"], LONG, (60, 96)),
     ]);
     commands.spawn(Musician::new("Soloist".into(), Soloist {
-        lead: lead.clone(), mind: Mind::new(1), violins, flute, root_midi: TONIC + 12,
+        lead: lead.clone(), mind: Mind::new(1), root_midi: TONIC + 12,
         motif_a: Motif::default(), motif_b: Motif::default(), current: Motif::default(),
         transform: Transform::Statement, statement_key: u32::MAX, anchor: 0, pos: 0,
-    }));
+    }).with_instrument(Channels::default().with(violins).with(flute)));
 
     // Bass: cellos + double basses.
     let cello = load("cello", -2.0, &[
@@ -1398,8 +1376,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, lead: Res<Lead>
         voice("sustain", &["arco-normal"], LONG, (24, 56)),
     ]);
     commands.spawn(Musician::new("Bass".into(), Bass {
-        lead: lead.clone(), mind: Mind::new(2), cello, contrabass, rhythm: [[0.0; 16]; 2],
-    }));
+        lead: lead.clone(), mind: Mind::new(2), rhythm: [[0.0; 16]; 2],
+    }).with_instrument(Channels::default().with(cello).with(contrabass)));
 
     // Arpeggio: violas.
     let violas = load("viola", -5.0, &[
@@ -1407,9 +1385,9 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, lead: Res<Lead>
         voice("short", &["arco-normal"], SHORT, (48, 80)),
     ]);
     commands.spawn(Musician::new("Arpeggio".into(), Arpeggio {
-        lead: lead.clone(), mind: Mind::new(3), sampler: violas, low: 57,
+        lead: lead.clone(), mind: Mind::new(3), low: 57,
         modes: [ArpMode::Up; 2], cells: [vec![0], vec![0]], idx: 0,
-    }));
+    }).with_instrument(violas));
 
     // Pads: clarinets, horns, trombone stabs, oboe on top.
     struct PadSpec<'a> {
@@ -1431,24 +1409,30 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, lead: Res<Lead>
     for (k, p) in pads.into_iter().enumerate() {
         commands.spawn(Musician::new(p.label.into(), Pad {
             lead: lead.clone(), mind: Mind::new(10 + k as u64), label: p.label,
-            sampler: load(p.instrument, p.db, &[p.voice]), center: p.center, enter: p.enter,
-            max_voices: p.max_voices, stabs: p.stabs,
+            center: p.center, enter: p.enter, max_voices: p.max_voices, stabs: p.stabs,
             rhythm: [[0.0; 16]; 2], voicing: Vec::new(), voiced_bar: u32::MAX,
-        }));
+        }).with_instrument(load(p.instrument, p.db, &[p.voice])));
     }
 
     // Drums.
-    let kit = Kit {
-        kick: library.resolve(&asset_server, "bass drum", &["struck-singly", "bass-drum-mallet", "rhythm"], Dynamic::Forte),
-        snare: library.resolve(&asset_server, "snare drum", &["with-snares", "rhythm"], Dynamic::Forte),
-        tom: library.resolve(&asset_server, "tom-toms", &["struck-singly"], Dynamic::MezzoForte),
-        clash: library.resolve(&asset_server, "clash cymbals", &["struck-together", "undamped"], Dynamic::Fortissimo),
-        susp_roll: library.resolve(&asset_server, "suspended cymbal", &["roll", "undamped"], Dynamic::Forte),
+    // Channel order must match KICK, SNARE, TOM, CLASH, SUSP_ROLL.
+    let one_shot = |instrument: &str, articulations: &[&str], dynamic| -> Box<dyn Instrument> {
+        match library.resolve(&asset_server, instrument, articulations, dynamic) {
+            Some(handle) => Box::new(Sampler { handle, volume: 0.0 }),
+            None => Box::new(Silent),
+        }
     };
+    let kit = Channels(vec![
+        one_shot("bass drum", &["struck-singly", "bass-drum-mallet", "rhythm"], Dynamic::Forte),
+        one_shot("snare drum", &["with-snares", "rhythm"], Dynamic::Forte),
+        one_shot("tom-toms", &["struck-singly"], Dynamic::MezzoForte),
+        one_shot("clash cymbals", &["struck-together", "undamped"], Dynamic::Fortissimo),
+        one_shot("suspended cymbal", &["roll", "undamped"], Dynamic::Forte),
+    ]);
     commands.spawn(Musician::new("Drums".into(), Drums {
-        lead: lead.clone(), mind: Mind::new(4), kit,
+        lead: lead.clone(), mind: Mind::new(4),
         kick: [[0.0; 16]; 2], snare: [[0.0; 16]; 2], fill: Vec::new(), fill_bar: u32::MAX,
-    }));
+    }).with_instrument(kit));
 
     commands.insert_resource(lead.get().conductor());
 }

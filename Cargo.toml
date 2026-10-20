@@ -115,3 +115,8 @@ path = "examples/improv_orchestra.rs"
 name = "synth_spike"
 path = "examples/synth_spike.rs"
 required-features = ["synth"]
+
+[[example]]
+name = "synth_band"
+path = "examples/synth_band.rs"
+required-features = ["synth"]

@@ -1,11 +1,11 @@
-use bevy::prelude::Commands;
-use bevy_seedling::prelude::{PlaybackSettings, SamplePlayer, Volume};
 use rand::seq::IteratorRandom;
 use crate::clock::Beat;
-use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler, TonalPlayer, STEPS_PER_BAR};
+use crate::instrument::{Instrument, NoteEvent};
+use crate::musicians::{Chord, MusicPlayer, Note, Sampler, TonalPlayer, STEPS_PER_BAR};
 
 pub struct Bassist {
-    pub sampler: Sampler,
+    /// Handed to the musician as its instrument; `None` once taken.
+    pub sampler: Option<Sampler>,
     /// MIDI semitone offset of the last played note, for proximity-biased selection.
     last_midi_diff: Option<i32>,
     /// Record `memory_bars` bars of bass line and repeat it `memory_repeats` times. 0 = no memory.
@@ -15,16 +15,23 @@ pub struct Bassist {
     repeat_end_bar: f32,
 }
 
-impl Bassist {
-    pub fn new(sampler: Sampler) -> Self {
+/// A bassist with no instrument of its own; give its `Musician` one.
+impl Default for Bassist {
+    fn default() -> Self {
         Self {
-            sampler,
+            sampler: None,
             last_midi_diff: None,
             memory_bars: 0,
             memory_repeats: 1,
             recorded_line: Vec::new(),
             repeat_end_bar: 0.0,
         }
+    }
+}
+
+impl Bassist {
+    pub fn new(sampler: Sampler) -> Self {
+        Self { sampler: Some(sampler), ..Self::default() }
     }
 
     /// Select a random note at or above `min_strength`, biasing toward notes
@@ -51,14 +58,9 @@ impl Bassist {
         candidates.into_iter().choose(&mut rand::rng())
     }
 
-    fn play_note(&mut self, note: Note, commands: &mut Commands) {
+    fn play_note(&mut self, note: Note, notes: &mut Vec<NoteEvent>) {
         self.last_midi_diff = Some(note.midi_note_diff);
-        commands.spawn((
-            SamplePlayer::new(self.sampler.handle.clone())
-                .with_volume(Volume::Decibels(self.sampler.volume as f32)),
-            PlaybackSettings::default()
-                .with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-        ));
+        notes.push(NoteEvent::from_diff(note.midi_note_diff).length(2.0));
     }
 
     fn generate_note(&self, step: u32, base_intensity: f32, chord: &Chord) -> Option<Note> {
@@ -86,7 +88,11 @@ impl Bassist {
 }
 
 impl MusicPlayer for Bassist {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn take_instrument(&mut self) -> Option<Box<dyn Instrument>> {
+        self.sampler.take().map(|s| Box::new(s) as Box<dyn Instrument>)
+    }
+
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         let step = TonalPlayer::flat_step(&beat);
 
         if self.memory_bars > 0 {
@@ -100,7 +106,7 @@ impl MusicPlayer for Bassist {
 
             if beat.time_bars < self.repeat_end_bar {
                 if let Some(note) = self.recorded_line[recording_index] {
-                    self.play_note(note, commands);
+                    self.play_note(note, notes);
                 }
                 return;
             }
@@ -112,7 +118,7 @@ impl MusicPlayer for Bassist {
             let note = self.generate_note(step, base_intensity, chord);
             self.recorded_line[recording_index] = note;
             if let Some(n) = note {
-                self.play_note(n, commands);
+                self.play_note(n, notes);
             }
 
             let last_index = total - 1;
@@ -124,7 +130,7 @@ impl MusicPlayer for Bassist {
         }
 
         if let Some(note) = self.generate_note(step, base_intensity, chord) {
-            self.play_note(note, commands);
+            self.play_note(note, notes);
         }
     }
 }
@@ -137,14 +143,13 @@ mod tests {
 
     fn make_beat(beat: u32, sixteenth: u32) -> Beat {
         Beat {
-            elapsed_time: 0.0,
             beat,
             sixteenth,
             bar_count: 0,
             beat_count: beat,
             sixteenth_count: beat * 4 + sixteenth,
             time_bars: beat as f32 / 4.0 + sixteenth as f32 / 16.0,
-            overshoot: 0.0,
+            ..Default::default()
         }
     }
 

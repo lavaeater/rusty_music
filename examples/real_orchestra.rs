@@ -34,7 +34,7 @@ use std::time::{Duration, Instant};
 use bevy::app::ScheduleRunnerPlugin;
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
-use bevy_seedling::prelude::{AudioSample, PlaybackSettings, SamplePlayer, Volume};
+use bevy_seedling::prelude::AudioSample;
 
 use ratatui::crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
@@ -55,7 +55,8 @@ use std::collections::HashMap;
 use rusty_music::clock::{Beat, Clock};
 use rusty_music::musicians::conductor::Conductor;
 use rusty_music::musicians::drummer::{generate_snare_fill_beat, SuperDrummer};
-use rusty_music::musicians::{midi_diff_to_pitch, Chord, MusicPlayer, Musician, Note, TonalPlayer};
+use rusty_music::instrument::{Channels, NoteEvent, Silent};
+use rusty_music::musicians::{Chord, MusicPlayer, Musician, Note, Sampler, TonalPlayer};
 use rusty_music::player::Intensity;
 use rusty_music::sampler::{Dynamic, MultiSampler, SampleLibrary, VoiceFilter};
 use rusty_music::{create_drummer_only, MusicPlugin};
@@ -100,21 +101,10 @@ fn epic_chords() -> Vec<Chord> {
 
 // ── Spawning helper ─────────────────────────────────────────────────────────
 
-/// Spawn one note from a multisampler at the target pitch, if a sample exists.
-fn play_note(
-    commands: &mut Commands,
-    sampler: &MultiSampler,
-    target_midi: i32,
-    role: &str,
-    dynamic: Dynamic,
-    extra_db: f32,
-) {
-    if let Some((handle, residual)) = sampler.pick(target_midi, role, dynamic) {
-        commands.spawn((
-            SamplePlayer::new(handle).with_volume(Volume::Decibels(sampler.volume_db + extra_db)),
-            PlaybackSettings::default().with_speed(midi_diff_to_pitch(residual)),
-        ));
-    }
+/// One note for a multisampled section: `role` picks the articulation and the
+/// intensity picks the dynamic layer (the instrument maps velocity → dynamic).
+fn section_note(target_midi: i32, role: &'static str, intensity: f32, extra_db: f32) -> NoteEvent {
+    NoteEvent::new(target_midi as f32).articulation(role).velocity(intensity).gain_db(extra_db)
 }
 
 // ── String section ────────────────────────────────────────────────────────────
@@ -123,7 +113,8 @@ fn play_note(
 /// pizzicato → spiccato ostinato → legato sustain → tremolo. `is_bass` sections
 /// hold low roots/fifths; melodic sections run an arpeggiated ostinato.
 struct StringSection {
-    sampler: MultiSampler,
+    /// Whether the instrument loaded a tremolo articulation.
+    has_tremolo: bool,
     /// Absolute MIDI note that chord offset 0 maps to.
     root_midi: i32,
     is_bass: bool,
@@ -131,7 +122,7 @@ struct StringSection {
 }
 
 impl StringSection {
-    fn play_bass(&mut self, beat: Beat, commands: &mut Commands, i: f32, chord: &Chord) {
+    fn play_bass(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, i: f32, chord: &Chord) {
         // Bass plays on strong beats only; whole-bar feel.
         if beat.sixteenth != 0 {
             return;
@@ -144,22 +135,20 @@ impl StringSection {
         if !active {
             return;
         }
-        let dynamic = Dynamic::for_intensity(i);
-        let role = if i > 0.78 && self.sampler.has_role("tremolo") {
+        let role = if i > 0.78 && self.has_tremolo {
             "tremolo"
         } else {
             "sustain"
         };
         // Root (lowest chord tone), plus the 5th above it as intensity grows.
         let Some(root) = chord.chord_notes.iter().min_by_key(|n| n.midi_note_diff) else { return };
-        play_note(commands, &self.sampler, self.root_midi + root.midi_note_diff, role, dynamic, -1.0 + i * 3.0);
+        out.push(section_note(self.root_midi + root.midi_note_diff, role, i, -1.0 + i * 3.0));
         if i > 0.6 {
-            play_note(commands, &self.sampler, self.root_midi + root.midi_note_diff + 7, role, dynamic, -4.0 + i * 3.0);
+            out.push(section_note(self.root_midi + root.midi_note_diff + 7, role, i, -4.0 + i * 3.0));
         }
     }
 
-    fn play_melodic(&mut self, beat: Beat, commands: &mut Commands, i: f32, chord: &Chord) {
-        let dynamic = Dynamic::for_intensity(i);
+    fn play_melodic(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, i: f32, chord: &Chord) {
         let step16 = TonalPlayer::flat_step(&beat);
 
         // Choose role + rhythmic rate by intensity band.
@@ -179,7 +168,7 @@ impl StringSection {
             && (beat.beat == 0 || beat.beat == 2)
             && let Some(note) = top_chord_note(chord, i)
         {
-            play_note(commands, &self.sampler, self.root_midi + note.midi_note_diff, "tremolo", dynamic, 1.0);
+            out.push(section_note(self.root_midi + note.midi_note_diff, "tremolo", i, 1.0));
         }
 
         if !step16.is_multiple_of(rate) {
@@ -203,7 +192,7 @@ impl StringSection {
             }
             n
         };
-        play_note(commands, &self.sampler, self.root_midi + note.midi_note_diff, role, dynamic, extra + i * 2.0);
+        out.push(section_note(self.root_midi + note.midi_note_diff, role, i, extra + i * 2.0));
     }
 }
 
@@ -219,14 +208,14 @@ fn top_chord_note(chord: &Chord, intensity: f32) -> Option<Note> {
 }
 
 impl MusicPlayer for StringSection {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
-        if base_intensity < 0.13 || self.sampler.is_empty() {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
+        if base_intensity < 0.13 {
             return;
         }
         if self.is_bass {
-            self.play_bass(beat, commands, base_intensity, chord);
+            self.play_bass(beat, out, base_intensity, chord);
         } else {
-            self.play_melodic(beat, commands, base_intensity, chord);
+            self.play_melodic(beat, out, base_intensity, chord);
         }
     }
 }
@@ -236,14 +225,13 @@ impl MusicPlayer for StringSection {
 /// Multisampled brass chord stabs. Stacks 1–3 simultaneous chord tones (a full
 /// brass chord) on strong beats once intensity is high enough.
 struct BrassSection {
-    sampler: MultiSampler,
     root_midi: i32,
 }
 
 impl MusicPlayer for BrassSection {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         let i = base_intensity;
-        if i < 0.42 || self.sampler.is_empty() {
+        if i < 0.42 {
             return;
         }
         let on_quarter = beat.sixteenth == 0
@@ -258,7 +246,6 @@ impl MusicPlayer for BrassSection {
         }
 
         let num_voices = if i > 0.85 { 3 } else if i > 0.62 { 2 } else { 1 };
-        let dynamic = Dynamic::for_intensity(i);
         let min_strength = (1.0 - i).max(0.0);
         let voices: Vec<Note> = chord
             .chord_notes
@@ -270,14 +257,9 @@ impl MusicPlayer for BrassSection {
 
         for (idx, note) in voices.iter().enumerate() {
             // Each stacked voice slightly quieter, for blend.
-            play_note(
-                commands,
-                &self.sampler,
-                self.root_midi + note.midi_note_diff,
-                "stab",
-                dynamic,
-                -2.0 - idx as f32 * 1.8 + i * 3.0,
-            );
+            out.push(section_note(self.root_midi + note.midi_note_diff,
+                "stab", i, -2.0 - idx as f32 * 1.8 + i * 3.0,
+            ));
         }
     }
 }
@@ -299,7 +281,6 @@ enum WoodwindRole {
 /// articulation, so the variant axes in play here are *duration* (short `run`
 /// vs. long `sustain` voices) and *dynamic* layers.
 struct WoodwindSection {
-    sampler: MultiSampler,
     root_midi: i32,
     enter: f32,
     role: WoodwindRole,
@@ -307,12 +288,11 @@ struct WoodwindSection {
 }
 
 impl MusicPlayer for WoodwindSection {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         let i = base_intensity;
-        if i < self.enter || self.sampler.is_empty() {
+        if i < self.enter {
             return;
         }
-        let dynamic = Dynamic::for_intensity(i);
         match self.role {
             WoodwindRole::RunTop => {
                 // Sustained top line on strong beats once the climax arrives.
@@ -321,7 +301,7 @@ impl MusicPlayer for WoodwindSection {
                     && (beat.beat == 0 || beat.beat == 2)
                     && let Some(note) = top_chord_note(chord, i)
                 {
-                    play_note(commands, &self.sampler, self.root_midi + note.midi_note_diff, "sustain", dynamic, 0.0);
+                    out.push(section_note(self.root_midi + note.midi_note_diff, "sustain", i, 0.0));
                 }
                 // Ascending scale-run sparkle on the eighth-note offbeats.
                 if beat.sixteenth == 2 {
@@ -334,13 +314,13 @@ impl MusicPlayer for WoodwindSection {
                     if note.strength < (1.0 - i) {
                         return;
                     }
-                    play_note(commands, &self.sampler, self.root_midi + note.midi_note_diff, "run", dynamic, -2.0 + i * 2.0);
+                    out.push(section_note(self.root_midi + note.midi_note_diff, "run", i, -2.0 + i * 2.0));
                 }
             }
             WoodwindRole::Harmony => {
                 let active = beat.sixteenth == 0 && (beat.beat == 0 || (beat.beat == 2 && i > 0.5));
                 if active && let Some(note) = mid_chord_note(chord, i) {
-                    play_note(commands, &self.sampler, self.root_midi + note.midi_note_diff, "sustain", dynamic, i * 2.0);
+                    out.push(section_note(self.root_midi + note.midi_note_diff, "sustain", i, i * 2.0));
                 }
             }
             WoodwindRole::BassDouble => {
@@ -348,7 +328,7 @@ impl MusicPlayer for WoodwindSection {
                     && beat.beat == 0
                     && let Some(root) = chord.chord_notes.iter().min_by_key(|n| n.midi_note_diff)
                 {
-                    play_note(commands, &self.sampler, self.root_midi + root.midi_note_diff, "sustain", dynamic, i * 2.0);
+                    out.push(section_note(self.root_midi + root.midi_note_diff, "sustain", i, i * 2.0));
                 }
             }
         }
@@ -374,38 +354,36 @@ fn mid_chord_note(chord: &Chord, intensity: f32) -> Option<Note> {
 
 // ── Percussion (single hits the existing Drummer can't voice as swells) ────────
 
-/// Crash + roll layer, using resolved orchestral-percussion handles directly.
-struct CymbalLayer {
-    clash: Option<Handle<AudioSample>>,
-    susp_roll: Option<Handle<AudioSample>>,
+/// Crash + roll layer over resolved orchestral-percussion samples:
+/// channel 0 = clash cymbals, channel 1 = suspended-cymbal roll.
+struct CymbalLayer;
+
+/// A one-shot sample instrument, or silence if the sample wasn't found.
+fn hit(handle: Option<Handle<AudioSample>>) -> Box<dyn rusty_music::instrument::Instrument> {
+    match handle {
+        Some(handle) => Box::new(Sampler { handle, volume: 0.0 }),
+        None => Box::new(Silent),
+    }
 }
 
 impl MusicPlayer for CymbalLayer {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
         let i = base_intensity;
         // Clash accent on the downbeat of every other bar (every bar at climax).
         if beat.beat == 0
             && beat.sixteenth == 0
             && i > 0.52
             && (beat.bar_count.is_multiple_of(2) || i > 0.82)
-            && let Some(h) = &self.clash
         {
             let vol = -10.0 + (i - 0.52).max(0.0) / 0.48 * 11.0;
-            commands.spawn((
-                SamplePlayer::new(h.clone()).with_volume(Volume::Decibels(vol)),
-                PlaybackSettings::default(),
-            ));
+            out.push(NoteEvent::from_diff(0).gain_db(vol).channel(0));
         }
         // Suspended-cymbal roll swell on the bar before each chord change at climax.
         if i > 0.7
             && beat.beat == 3
             && beat.sixteenth == 0
-            && let Some(h) = &self.susp_roll
         {
-            commands.spawn((
-                SamplePlayer::new(h.clone()).with_volume(Volume::Decibels(-9.0 + i * 5.0)),
-                PlaybackSettings::default(),
-            ));
+            out.push(NoteEvent::from_diff(0).gain_db(-9.0 + i * 5.0).channel(1));
         }
     }
 }
@@ -742,8 +720,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &VoiceFilter { role: "tremolo", articulations: &["arco-tremolo"], durations: &[], midi_range: (62, 88) }, DYNAMICS);
     report.push(("violins".into(), violins.sample_count()));
     commands.spawn(Musician::new("Violins".into(), StringSection {
-        sampler: violins, root_midi: 74, is_bass: false, seq_idx: 0,
-    }));
+        has_tremolo: violins.has_role("tremolo"), root_midi: 74, is_bass: false, seq_idx: 0,
+    }).with_instrument(violins));
 
     // ── Cellos: low sustain + tremolo ──────────────────────────────────────────
     // Cello range A2–Gs5; root D3 = 50.
@@ -754,8 +732,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &VoiceFilter { role: "tremolo", articulations: &["arco-tremolo"], durations: &[], midi_range: (38, 65) }, DYNAMICS);
     report.push(("cellos".into(), cellos.sample_count()));
     commands.spawn(Musician::new("Cellos".into(), StringSection {
-        sampler: cellos, root_midi: 50, is_bass: true, seq_idx: 0,
-    }));
+        has_tremolo: cellos.has_role("tremolo"), root_midi: 50, is_bass: true, seq_idx: 0,
+    }).with_instrument(cellos));
 
     // ── Brass: trombone chord stabs ────────────────────────────────────────────
     // Trombone range A2–Gs5; root D3 = 50.
@@ -763,7 +741,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     brass.add_voice(&library, &asset_server,
         &VoiceFilter { role: "stab", articulations: &["normal"], durations: &["025", "05", "1"], midi_range: (45, 74) }, DYNAMICS);
     report.push(("brass".into(), brass.sample_count()));
-    commands.spawn(Musician::new("Brass".into(), BrassSection { sampler: brass, root_midi: 50 }));
+    commands.spawn(Musician::new("Brass".into(), BrassSection { root_midi: 50 }).with_instrument(brass));
 
     // ── Woodwind choir ─────────────────────────────────────────────────────────
     // All mostly `normal` articulation, so we lean on duration (run vs. sustain)
@@ -779,8 +757,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &VoiceFilter { role: "sustain", articulations: &["normal"], durations: &["1", "15", "long"], midi_range: (72, 92) }, DYNAMICS);
     woodwinds += flute.sample_count();
     commands.spawn(Musician::new("Flute".into(), WoodwindSection {
-        sampler: flute, root_midi: 74, enter: 0.45, role: WoodwindRole::RunTop, seq_idx: 0,
-    }));
+        root_midi: 74, enter: 0.45, role: WoodwindRole::RunTop, seq_idx: 0,
+    }).with_instrument(flute));
 
     // Clarinet — mid harmony pad under the strings. Range A3–Gs6; root D4 = 62.
     let mut clarinet = MultiSampler::new("clarinet", -6.0);
@@ -788,8 +766,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &VoiceFilter { role: "sustain", articulations: &["normal"], durations: &["1", "15", "long"], midi_range: (58, 82) }, DYNAMICS);
     woodwinds += clarinet.sample_count();
     commands.spawn(Musician::new("Clarinet".into(), WoodwindSection {
-        sampler: clarinet, root_midi: 62, enter: 0.30, role: WoodwindRole::Harmony, seq_idx: 0,
-    }));
+        root_midi: 62, enter: 0.30, role: WoodwindRole::Harmony, seq_idx: 0,
+    }).with_instrument(clarinet));
 
     // Bassoon — low sustain doubling the cellos. Range A2–Gs4; root D4 = 62.
     let mut bassoon = MultiSampler::new("bassoon", -5.0);
@@ -797,8 +775,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &VoiceFilter { role: "sustain", articulations: &["normal"], durations: &["1", "15", "long"], midi_range: (45, 65) }, DYNAMICS);
     woodwinds += bassoon.sample_count();
     commands.spawn(Musician::new("Bassoon".into(), WoodwindSection {
-        sampler: bassoon, root_midi: 62, enter: 0.40, role: WoodwindRole::BassDouble, seq_idx: 0,
-    }));
+        root_midi: 62, enter: 0.40, role: WoodwindRole::BassDouble, seq_idx: 0,
+    }).with_instrument(bassoon));
 
     // Oboe — reedy upper sustained color, octave above the clarinet, climax only.
     // Range A4–Gs6; root D6 = 86 doubles the clarinet's harmony an octave up.
@@ -807,8 +785,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &VoiceFilter { role: "sustain", articulations: &["normal"], durations: &["1", "15"], midi_range: (72, 92) }, DYNAMICS);
     woodwinds += oboe.sample_count();
     commands.spawn(Musician::new("Oboe".into(), WoodwindSection {
-        sampler: oboe, root_midi: 86, enter: 0.72, role: WoodwindRole::Harmony, seq_idx: 0,
-    }));
+        root_midi: 86, enter: 0.72, role: WoodwindRole::Harmony, seq_idx: 0,
+    }).with_instrument(oboe));
     report.push(("woodwinds".into(), woodwinds));
 
     // ── Percussion: bass drum + snare via existing SuperDrummer ─────────────────
@@ -828,10 +806,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     }
 
     // ── Cymbals: clash accents + suspended-cymbal roll swells ──────────────────
-    commands.spawn(Musician::new("Cymbals".into(), CymbalLayer {
-        clash: library.resolve(&asset_server, "clash cymbals", &["struck-together", "undamped"], Dynamic::Fortissimo),
-        susp_roll: library.resolve(&asset_server, "suspended cymbal", &["roll", "undamped"], Dynamic::Forte),
-    }));
+    commands.spawn(Musician::new("Cymbals".into(), CymbalLayer).with_instrument(Channels(vec![
+        hit(library.resolve(&asset_server, "clash cymbals", &["struck-together", "undamped"], Dynamic::Fortissimo)),
+        hit(library.resolve(&asset_server, "suspended cymbal", &["roll", "undamped"], Dynamic::Forte)),
+    ])));
 
     commands.insert_resource(Conductor { chords: epic_chords(), chord_length_bars: 4.0 });
     commands.insert_resource(LoadReport { lines: report });

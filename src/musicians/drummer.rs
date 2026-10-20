@@ -1,9 +1,8 @@
-use bevy::prelude::Commands;
 use std::collections::HashMap;
-use bevy_seedling::prelude::{PlaybackSettings, SamplePlayer, Volume};
 use rand::seq::IteratorRandom;
 use crate::clock::Beat;
-use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Note, Sampler};
+use crate::instrument::{Channels, Instrument, NoteEvent};
+use crate::musicians::{Chord, MusicPlayer, Note, Sampler};
 
 pub struct SuperDrummer {
     pub drums: Vec<Drummer>,
@@ -35,17 +34,48 @@ impl SuperDrummer {
     }
 }
 
+impl SuperDrummer {
+    /// Channel index of each drum set's first drummer, in [`Channels`] order:
+    /// drums, fills, half-time, double-time.
+    fn offsets(&self) -> [usize; 4] {
+        let a = self.drums.len();
+        let b = a + self.fill_drums.len();
+        let c = b + self.half_time_drums.len();
+        [0, a, b, c]
+    }
+
+    fn play_set(set: &mut [Drummer], first_channel: usize, beat: Beat, notes: &mut Vec<NoteEvent>, intensity: f32, chord: &Chord) {
+        for (i, drummer) in set.iter_mut().enumerate() {
+            let start = notes.len();
+            drummer.play(beat, notes, intensity, chord);
+            for note in &mut notes[start..] {
+                note.channel = first_channel + i;
+            }
+        }
+    }
+}
+
 impl MusicPlayer for SuperDrummer {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    /// Every drummer's sampler, as one channel each.
+    fn take_instrument(&mut self) -> Option<Box<dyn Instrument>> {
+        let mut kit = Channels::default();
+        for set in [&mut self.drums, &mut self.fill_drums, &mut self.half_time_drums, &mut self.double_time_drums] {
+            for drummer in set.iter_mut() {
+                kit.0.push(drummer.take_instrument().unwrap_or_else(|| Box::new(crate::instrument::Silent)));
+            }
+        }
+        Some(Box::new(kit))
+    }
+
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
+        let [drums_at, fills_at, half_at, double_at] = self.offsets();
         // Fill pattern takes priority on the last bar of every fill_every bars.
         let is_fill_bar = self.fill_every > 0
             && !self.fill_drums.is_empty()
-            && (beat.bar_count + 1) % self.fill_every == 0;
+            && (beat.bar_count + 1).is_multiple_of(self.fill_every);
 
         if is_fill_bar {
-            for drummer in self.fill_drums.iter_mut() {
-                drummer.play(beat, commands, base_intensity, chord);
-            }
+            Self::play_set(&mut self.fill_drums, fills_at, beat, notes, base_intensity, chord);
             return;
         }
 
@@ -54,38 +84,37 @@ impl MusicPlayer for SuperDrummer {
         let use_double = self.auto_time_feel && base_intensity >= 0.67 && !self.double_time_drums.is_empty();
 
         if use_half {
-            for drummer in self.half_time_drums.iter_mut() {
-                drummer.play(beat, commands, base_intensity, chord);
-            }
+            Self::play_set(&mut self.half_time_drums, half_at, beat, notes, base_intensity, chord);
         } else if use_double {
-            for drummer in self.double_time_drums.iter_mut() {
-                drummer.play(beat, commands, base_intensity, chord);
-            }
+            Self::play_set(&mut self.double_time_drums, double_at, beat, notes, base_intensity, chord);
         } else {
             // Normal time. At very low intensity, thin the groove by skipping odd ticks.
-            if base_intensity < 0.3 && beat.sixteenth_count % 2 != 0 {
+            if base_intensity < 0.3 && !beat.sixteenth_count.is_multiple_of(2) {
                 return;
             }
-            for drummer in self.drums.iter_mut() {
-                drummer.play(beat, commands, base_intensity, chord);
-            }
+            Self::play_set(&mut self.drums, drums_at, beat, notes, base_intensity, chord);
         }
     }
 }
 
 pub struct Drummer {
     pub notes: HashMap<(u32, u32), Note>,
-    pub sampler: Sampler,
+    /// Handed to the musician as its instrument; `None` once taken.
+    pub sampler: Option<Sampler>,
 }
 
 impl Drummer {
     pub fn new(sampler: Sampler, notes: HashMap<(u32, u32), Note>) -> Self {
-        Self { notes, sampler }
+        Self { notes, sampler: Some(sampler) }
     }
 }
 
 impl MusicPlayer for Drummer {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
+    fn take_instrument(&mut self) -> Option<Box<dyn Instrument>> {
+        self.sampler.take().map(|s| Box::new(s) as Box<dyn Instrument>)
+    }
+
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
         let min_strength = 1.0 - base_intensity;
         if let Some(note_to_play) = self
             .notes
@@ -95,12 +124,7 @@ impl MusicPlayer for Drummer {
             })
             .choose(&mut rand::rng())
         {
-            commands.spawn((
-                SamplePlayer::new(self.sampler.handle.clone())
-                    .with_volume(Volume::Decibels(self.sampler.volume as f32)),
-                PlaybackSettings::default()
-                    .with_speed(midi_diff_to_pitch(note_to_play.1.midi_note_diff)),
-            ));
+            notes.push(NoteEvent::from_diff(note_to_play.1.midi_note_diff).velocity(note_to_play.1.strength));
         }
     }
 }

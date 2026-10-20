@@ -1,9 +1,12 @@
 //! Synthesised instruments: glicol voice graphs running inside Firewheel.
 //!
 //! Spawn a [`SynthNode`] (plus an optional [`SynthConfig`]) like any other
-//! bevy_seedling node; it connects to the main bus. Play it by queueing
-//! timestamped [`NoteMsg`]s with [`send_note`]. Mutating the `SynthNode`
+//! bevy_seedling node; it connects to the main bus. Mutating the `SynthNode`
 //! component (cutoff, resonance, volume) is diffed to the audio thread.
+//!
+//! To let a [`Musician`](crate::musicians::Musician) play it, put both on the
+//! same entity with a [`SynthInstrument`] — see [`synth_musician`]. Raw
+//! timestamped notes can also be sent with [`send_note`].
 
 pub mod engine;
 
@@ -23,6 +26,9 @@ use bevy_seedling::prelude::{AudioContext, FirewheelNode, RegisterNode};
 
 pub use engine::{NoteMsg, SynthPatch, LATENCY};
 use engine::SynthEngine;
+
+use crate::instrument::{Instrument, NoteEvent, PlayContext};
+use crate::musicians::{MusicPlayer, Musician};
 
 /// Registers [`SynthNode`] with bevy_seedling.
 pub struct SynthPlugin;
@@ -148,4 +154,42 @@ pub fn send_note(context: &mut AudioContext, node: &FirewheelNode, msg: NoteMsg,
             event: NodeEventType::CustomBytes(msg.encode()),
         });
     });
+}
+
+/// Plays notes on the [`SynthNode`] that shares the musician's entity.
+#[derive(Default)]
+pub struct SynthInstrument {
+    next_id: u32,
+    /// Semitones added to every note, to put a musician in this synth's register.
+    pub transpose: f32,
+}
+
+impl SynthInstrument {
+    pub fn transposed(semitones: f32) -> Self {
+        Self { next_id: 0, transpose: semitones }
+    }
+}
+
+impl Instrument for SynthInstrument {
+    fn play(&mut self, note: &NoteEvent, at: f64, length: f64, cx: &mut PlayContext) {
+        // The node gets an ID once the audio graph has picked it up; until then, rest.
+        let Some(node) = cx.node else { return };
+        let id = self.next_id;
+        self.next_id = self.next_id.wrapping_add(1);
+        let on = NoteMsg::On { id, midi: note.pitch + self.transpose, velocity: note.velocity * Volume::Decibels(note.gain_db).amp() };
+        send_note(cx.audio, node, on, InstantSeconds(at));
+        send_note(cx.audio, node, NoteMsg::Off { id }, InstantSeconds(at + length.max(0.01)));
+    }
+}
+
+/// A musician playing a synth patch, `transpose` semitones from where the
+/// player writes its notes: everything to spawn on one entity.
+pub fn synth_musician(
+    name: impl Into<String>,
+    player: impl MusicPlayer + 'static,
+    transpose: f32,
+    synth: SynthNode,
+    config: SynthConfig,
+) -> impl Bundle {
+    (Musician::new(name.into(), player).with_instrument(SynthInstrument::transposed(transpose)), synth, config)
 }

@@ -197,6 +197,37 @@ now have a `length`.
 | 2.3 | Samples are scheduled with `PlaybackSettings::play_at`; synths get timestamped events |
 | 2.4 | Tempo changes and quantised "start at next bar" requests become trivial |
 
+#### Phase 1 + 2 results ✅
+
+Done as one breaking pass, as planned. Differences from the plan:
+- **Instrument lives on the `Musician`**, not on a separate entity:
+  `Musician { player, instrument }`. A synth musician is one entity carrying
+  `Musician` + `SynthNode` + `SynthConfig` (`synth::synth_musician`), and the
+  routing system passes that entity's `FirewheelNode` to the instrument.
+- **`MusicPlayer::take_instrument()`** lets built-in musicians keep their
+  sampler-taking constructors (`Drummer::new(sampler, …)`, `create_bassist`, …)
+  and hand the sampler over as the default instrument. `SuperDrummer` builds a
+  `Channels` kit from its drummers. Existing user code that only used the
+  constructors compiles unchanged.
+- `NoteEvent` uses absolute MIDI pitch, with offset and length in steps. Musicians
+  written in `midi_note_diff` use `NoteEvent::from_diff`, where 60 is a single
+  sample's native pitch, so sampled examples sound as before.
+- `MultiSampler` maps `velocity` → dynamic layer, and `articulation` → role.
+  The orchestra examples pass intensity as velocity, as they did before.
+
+**Timing, measured from the speakers** (same probe, 808 hi-hat on every 16th
+at 120 bpm, game loop deliberately stuttering between 1 and 30 ms frames):
+
+| Clock | 16th-note interval error |
+|-------|--------------------------|
+| Old: frame-driven `Time` deltas | −40 ms … +46 ms |
+| New: `Time<Audio>` + 100 ms look-ahead | ±0.1 ms (one resampled frame) |
+
+Also fixed along the way: the old clock never emitted bar 0's downbeat, and
+`sample_browser` / `bevy_integration` compile again on Bevy 0.19.
+`examples/synth_band.rs` runs the stock `Bassist` / `Arpeggiator` / `Soloist`
+on synths (with a sampled 808 kit), with filter cutoffs following intensity.
+
 ### Phase 3 — Real synth instruments
 | # | Task |
 |---|------|

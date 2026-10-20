@@ -29,7 +29,7 @@ use bevy::app::ScheduleRunnerPlugin;
 use bevy::asset::io::AssetSourceBuilder;
 use bevy::asset::{AssetApp, AssetPlugin};
 use bevy::prelude::*;
-use bevy_seedling::prelude::{AudioSample, PlaybackSettings, SamplePlayer, SeedlingPlugin, Volume};
+use bevy_seedling::prelude::{AudioSample, PlaybackSettings, SamplePlayer, SeedlingPlugins, Volume};
 
 use ratatui::crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
@@ -393,7 +393,7 @@ fn main() {
         // on disk as `disk://<path-without-leading-slash>`.
         .register_asset_source("disk", AssetSourceBuilder::platform_default("/", None))
         .add_plugins(AssetPlugin::default())
-        .add_plugins(SeedlingPlugin::default())
+        .add_plugins(SeedlingPlugins)
         .insert_resource(TuiTerminal(terminal))
         .insert_resource(AppState {
             browser: FsBrowser::new(start),
