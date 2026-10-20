@@ -125,6 +125,74 @@ impl Mix {
     }
 }
 
+impl Mix {
+    /// The mix `t` (0–1) of the way from `self` to `other`. The dialogue duck
+    /// is left alone: it is runtime state, not part of a scene.
+    pub fn lerp(&self, other: &Mix, t: f32) -> Mix {
+        let l = |a: f32, b: f32| a + (b - a) * t;
+        let mut out = other.clone();
+        out.music_db = l(self.music_db, other.music_db);
+        out.duck_db = self.duck_db;
+        out.duck_time = self.duck_time;
+        for (o, (a, b)) in out.sections.iter_mut().zip(self.sections.iter().zip(&other.sections)) {
+            *o = SectionMix { volume_db: l(a.volume_db, b.volume_db), pan: l(a.pan, b.pan), reverb_db: l(a.reverb_db, b.reverb_db), echo_db: l(a.echo_db, b.echo_db) };
+        }
+        let (ra, rb) = (self.reverb, other.reverb);
+        out.reverb = ReverbMix { room_size: l(ra.room_size, rb.room_size), damping: l(ra.damping, rb.damping), width: l(ra.width, rb.width), return_db: l(ra.return_db, rb.return_db) };
+        let (ea, eb) = (self.echo, other.echo);
+        out.echo = EchoMix {
+            steps: if t < 0.5 { ea.steps } else { eb.steps },
+            feedback: l(ea.feedback, eb.feedback),
+            damping: l(ea.damping, eb.damping),
+            ping_pong: if t < 0.5 { ea.ping_pong } else { eb.ping_pong },
+            return_db: l(ea.return_db, eb.return_db),
+        };
+        out
+    }
+
+    fn distance(&self, other: &Mix) -> f32 {
+        let mut d = (self.music_db - other.music_db).abs() + (self.reverb.room_size - other.reverb.room_size).abs() * 40.0;
+        for (a, b) in self.sections.iter().zip(&other.sections) {
+            d += (a.volume_db - b.volume_db).abs() + (a.reverb_db - b.reverb_db).abs() + (a.echo_db - b.echo_db).abs() + (a.pan - b.pan).abs() * 10.0;
+        }
+        d + (self.reverb.return_db - other.reverb.return_db).abs() + (self.echo.return_db - other.echo.return_db).abs() + (self.echo.feedback - other.echo.feedback).abs() * 20.0
+    }
+}
+
+/// Named mixes for places or moments ("cave", "garden", "boss"). Set
+/// `active` and the [`Mix`] glides to that scene over `glide` seconds.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct MixScenes {
+    pub scenes: std::collections::HashMap<String, Mix>,
+    pub active: Option<String>,
+    pub glide: f32,
+}
+
+impl MixScenes {
+    pub fn with(mut self, name: impl Into<String>, mix: Mix) -> Self {
+        self.scenes.insert(name.into(), mix);
+        self
+    }
+
+    pub fn activate(&mut self, name: &str) {
+        if self.active.as_deref() != Some(name) {
+            self.active = Some(name.to_string());
+        }
+    }
+}
+
+fn glide_to_scene(scenes: Option<Res<MixScenes>>, time: Res<Time>, mut mix: ResMut<Mix>) {
+    let Some(scenes) = scenes else { return };
+    let Some(target) = scenes.active.as_ref().and_then(|name| scenes.scenes.get(name)) else { return };
+    if mix.distance(target) < 0.05 {
+        return;
+    }
+    let k = if scenes.glide <= 0.0 { 1.0 } else { 1.0 - (-3.0 * time.delta_secs() / scenes.glide).exp() };
+    let next = mix.lerp(target, k);
+    // Land exactly once close, so change detection goes quiet again.
+    *mix = if next.distance(target) < 0.05 { Mix { duck_db: mix.duck_db, duck_time: mix.duck_time, ..target.clone() } } else { next };
+}
+
 /// The mixer's audio-graph entities, for routing extra nodes or reading meters.
 #[derive(Resource, Debug, Clone)]
 pub struct Mixer {
@@ -191,7 +259,7 @@ impl Plugin for MixPlugin {
             }
         };
         world.flush();
-        app.insert_resource(mixer).add_systems(Update, apply_mix);
+        app.insert_resource(mixer).add_systems(Update, (glide_to_scene, apply_mix).chain());
     }
 }
 
@@ -309,5 +377,25 @@ impl Instrument for Sidechain {
                 t.send(cx.audio, &node, at);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scenes_lerp_and_keep_the_duck() {
+        let open = Mix::default();
+        let mut cave = Mix::default();
+        cave.reverb.room_size = 0.95;
+        cave.section(Section::Drums).reverb_db = -6.0;
+        let mut now = open.clone();
+        now.duck_db = 12.0;
+        let half = now.lerp(&cave, 0.5);
+        assert!((half.reverb.room_size - 0.85).abs() < 1e-6);
+        assert!((half.sections[0].reverb_db - -16.0).abs() < 1e-6);
+        assert_eq!(half.duck_db, 12.0, "dialogue duck is not part of a scene");
+        assert!(now.lerp(&cave, 1.0).distance(&cave) < 1e-6);
     }
 }

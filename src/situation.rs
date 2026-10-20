@@ -20,7 +20,7 @@ use bevy::prelude::*;
 use crate::clock::{Beat, Clock, progress_clock_system};
 use crate::harmony::{Harmony, Mode};
 use crate::instrument::NoteEvent;
-use crate::musicians::conductor::Conductor;
+use crate::musicians::conductor::{Conductor, UpcomingChords};
 use crate::musicians::{Chord, Muted};
 use crate::player::{play_sound_on_the_beat, Intensity};
 
@@ -274,7 +274,10 @@ fn follow_tempo(tempo: Option<Res<TempoFollows>>, state: Res<MusicState>, mut cl
 }
 
 /// At each phrase start, re-pick the mode from valence and rebuild the chords.
+/// At each phrase start, re-pick the mode from valence and schedule new
+/// chords from exactly that bar.
 fn conduct(
+    mut commands: Commands,
     mut beats: MessageReader<Beat>,
     mut harmony: ResMut<Harmony>,
     state: Res<MusicState>,
@@ -282,21 +285,22 @@ fn conduct(
     mut built: Local<bool>,
 ) {
     let mood = state.current();
-    let mut rebuild = !*built;
-    for beat in beats.read() {
-        let phrase = harmony.phrase_bars().max(1.0) as u32;
-        if beat.beat == 0 && beat.sixteenth == 0 && beat.bar_count.is_multiple_of(phrase) {
-            rebuild = true;
-        }
-    }
-    if !rebuild {
+    let phrase = harmony.phrase_bars().max(1.0) as u32;
+    let phrase_start = beats
+        .read()
+        .find(|b| b.beat == 0 && b.sixteenth == 0 && b.bar_count.is_multiple_of(phrase))
+        .map(|b| b.time_bars);
+    if *built && phrase_start.is_none() {
         return;
     }
     if harmony.mode_follows_valence {
         harmony.mode = Mode::from_valence(mood.valence);
     }
-    conductor.chords = harmony.chords(mood.tension);
-    conductor.chord_length_bars = harmony.phrase_bars();
+    let next = Conductor { chords: harmony.chords(mood.tension), chord_length_bars: harmony.phrase_bars() };
+    match phrase_start {
+        Some(from_bars) if *built => commands.insert_resource(UpcomingChords { from_bars, conductor: next }),
+        _ => *conductor = next,
+    }
     *built = true;
 }
 

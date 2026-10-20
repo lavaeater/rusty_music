@@ -67,13 +67,13 @@ impl Bassist {
         let last = self.last_midi_diff;
         if step == 0 {
             Self::get_proximate_note(&chord.chord_notes, 1.0, last)
-        } else if step % 4 == 0 {
+        } else if step.is_multiple_of(4) {
             if rand::random::<f32>() < base_intensity {
                 Self::get_proximate_note(&chord.chord_notes, 0.5, last)
             } else {
                 None
             }
-        } else if step % 2 == 0 {
+        } else if step.is_multiple_of(2) {
             if rand::random::<f32>() < base_intensity - 0.25 {
                 Self::get_proximate_note(&chord.chord_notes, 0.25, last)
             } else {
@@ -173,7 +173,7 @@ mod tests {
     fn flat_step_eighth_positions() {
         for (b, s) in [(0u32, 2u32), (1, 2), (2, 2), (3, 2)] {
             let step = TonalPlayer::flat_step(&make_beat(b, s));
-            assert!(step % 2 == 0 && step % 4 != 0);
+            assert!(step.is_multiple_of(2) && !step.is_multiple_of(4));
         }
     }
 
@@ -181,7 +181,7 @@ mod tests {
     fn flat_step_sixteenth_positions() {
         for (b, s) in [(0u32, 1u32), (0, 3), (1, 1), (1, 3)] {
             let step = TonalPlayer::flat_step(&make_beat(b, s));
-            assert!(step % 2 != 0);
+            assert!(!step.is_multiple_of(2));
         }
     }
 

@@ -260,12 +260,11 @@ struct CymbalLayer;
 
 impl MusicPlayer for CymbalLayer {
     fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
-        if beat.beat == 0 && beat.sixteenth == 0 && base_intensity > 0.52 {
-            if beat.bar_count.is_multiple_of(2) || base_intensity > 0.82 {
+        if beat.beat == 0 && beat.sixteenth == 0 && base_intensity > 0.52
+            && (beat.bar_count.is_multiple_of(2) || base_intensity > 0.82) {
                 let vol = -8.0 + (base_intensity - 0.52).max(0.0) / 0.48 * 9.0;
                 out.push(NoteEvent::from_diff(0).gain_db(vol).channel(0));
             }
-        }
         if base_intensity > 0.48 && beat.sixteenth == 2 && beat.beat % 2 == 1 {
             out.push(NoteEvent::from_diff(0).gain_db(-6.0 + base_intensity * 3.0).channel(1));
         }
@@ -633,13 +632,12 @@ fn handle_normal_input(
         }
         // Cycle drum pattern
         KeyCode::Char('p') | KeyCode::Char('P') => {
-            if let Some(i) = state.instruments.get_mut(state.selected) {
-                if i.kind == "drummer" {
+            if let Some(i) = state.instruments.get_mut(state.selected)
+                && i.kind == "drummer" {
                     let idx = DRUM_PATTERNS.iter().position(|&p| p == i.pattern).unwrap_or(0);
                     i.pattern = DRUM_PATTERNS[(idx + 1) % DRUM_PATTERNS.len()].into();
                     state.pending = true;
                 }
-            }
         }
         // Browse primary sample
         KeyCode::Char('f') | KeyCode::Char('F') => {
@@ -663,9 +661,8 @@ fn handle_normal_input(
         }
         // Remove last sample (brass)
         KeyCode::Char('x') | KeyCode::Char('X') if mods.contains(KeyModifiers::SHIFT) => {
-            if let Some(i) = state.instruments.get_mut(state.selected) {
-                if i.samples.len() > 1 { i.samples.pop(); state.pending = true; }
-            }
+            if let Some(i) = state.instruments.get_mut(state.selected)
+                && i.samples.len() > 1 { i.samples.pop(); state.pending = true; }
         }
         // Add instrument
         KeyCode::Char('n') | KeyCode::Char('N') => {
@@ -794,9 +791,8 @@ fn handle_browser_input(
                     // Store the absolute path; load_sample routes it via the disk source.
                     let path_str = path.to_string_lossy().into_owned();
                     if let Some(instr) = state.instruments.get_mut(target) {
-                        if append {
-                            instr.samples.push(path_str);
-                        } else if instr.samples.is_empty() {
+                        // Append, or replace the first sample (adding one if there is none).
+                        if append || instr.samples.is_empty() {
                             instr.samples.push(path_str);
                         } else {
                             instr.samples[0] = path_str;
@@ -965,7 +961,7 @@ fn draw_tui(
     clock: Res<Clock>,
 ) {
     let now = Instant::now();
-    if state.last_draw.map_or(false, |t| now.duration_since(t).as_millis() < 33) {
+    if state.last_draw.is_some_and(|t| now.duration_since(t).as_millis() < 33) {
         return;
     }
     state.last_draw = Some(now);
@@ -1021,7 +1017,7 @@ fn draw_tui(
                     if selected { Style::default().fg(Color::Yellow) } else { Style::default() },
                 ),
                 Span::styled(
-                    format!(" {:<14}", &instr.name),
+                    format!(" {:<14}", instr.name),
                     if instr.muted {
                         Style::default().fg(Color::DarkGray)
                     } else if selected {

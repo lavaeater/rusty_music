@@ -429,6 +429,29 @@ on synths (with a sampled 808 kit), with filter cutoffs following intensity.
   unfocused. Visible windows are unaffected.
 
 
+#### Polish after the merge (0.4.0)
+
+- **Music keeps playing through slow frames.** The clock's look-ahead adapts
+  to the slowest recent frame gap (0.1 s → up to 1.5 s, decaying back within
+  seconds). Re-run of the hidden-window/vsync case: bars took ~2 s at 126 bpm
+  (correct), where they took 15 s before; the recording was continuous after
+  the first second. Harmony changes are scheduled from an exact bar
+  (`UpcomingChords`), so long look-aheads never play pre-boundary beats on
+  the new chords.
+- **Improvisers in the library** (`rusty_music::improv`): the improv
+  orchestra's soloist, bass, pads, arpeggio and drums, rewritten to work over
+  any `Chord`. `MusicPlayer::play_with_next` (default: `play`) gives players the
+  next bar's chord for approach notes. `synth_game` now uses them.
+- **6.5 per-entity music**: `Proximity` + `MusicListener`; in `synth_game`
+  every hunter hums the chord root, louder and brighter as it closes in.
+- **Places**: `MixScenes` glides the mix between named presets (the garden
+  in `synth_game` is a scene).
+- **Zero clippy warnings** across all targets; version 0.4.0 (breaking:
+  `MusicPlayer`/`NoteEvent` from 0.3, `SynthPatch` became a struct).
+- **Still open**: 4.3 (`bevy_glicol` extraction, separate repo); flattening
+  voices out of glicol's graph for speed (not needed at today's ~0.25 % of a
+  core per voice); per-tag mood mappings beyond `MixScenes`.
+
 ---
 
 ## 5. Open questions

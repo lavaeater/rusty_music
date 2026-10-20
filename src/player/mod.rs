@@ -3,7 +3,7 @@ use bevy_seedling::prelude::{Audio, AudioContext, FirewheelNode};
 use crate::clock::Beat;
 use crate::instrument::{NoteEvent, PlayContext};
 use crate::musicians::{Musician, Muted};
-use crate::musicians::conductor::Conductor;
+use crate::musicians::conductor::{Conductor, UpcomingChords};
 use crate::mix::Section;
 use crate::situation::Stinger;
 
@@ -24,7 +24,8 @@ pub fn play_sound_on_the_beat(
     mut commands: Commands,
     mut audio: ResMut<AudioContext>,
     time: Res<Time<Audio>>,
-    conductor: Res<Conductor>,
+    mut conductor: ResMut<Conductor>,
+    upcoming: Option<Res<UpcomingChords>>,
     intensity: Res<Intensity>,
     mut musicians: Query<MusicianParts>,
     nodes: Query<&FirewheelNode>,
@@ -32,8 +33,15 @@ pub fn play_sound_on_the_beat(
     let find_node = |entity| nodes.get(entity).ok().map(|n| FirewheelNode(n.0));
     stingers.extend(stinger_reader.read().cloned());
     let mut notes: Vec<NoteEvent> = Vec::new();
+    let mut reached_upcoming = false;
     for beat in beat_reader.read() {
-        let chord = conductor.current_chord(beat.time_bars);
+        let chord_at = |bars: f32| match &upcoming {
+            Some(next) if bars >= next.from_bars => next.conductor.current_chord(bars),
+            _ => conductor.current_chord(bars),
+        };
+        let chord = chord_at(beat.time_bars);
+        let next_chord = chord_at(beat.bar_count as f32 + 1.0);
+        reached_upcoming |= upcoming.as_ref().is_some_and(|u| beat.time_bars >= u.from_bars);
 
         for (mut musician, node, muted, section) in musicians.iter_mut() {
             if muted {
@@ -41,7 +49,7 @@ pub fn play_sound_on_the_beat(
             }
             let Musician { player, instrument, .. } = &mut *musician;
             notes.clear();
-            player.play(*beat, &mut notes, intensity.0, chord);
+            player.play_with_next(*beat, &mut notes, intensity.0, chord, next_chord);
             if notes.is_empty() {
                 continue;
             }
@@ -70,5 +78,11 @@ pub fn play_sound_on_the_beat(
                 musician.instrument.play(&note, at, length, &mut cx);
             }
         }
+    }
+
+    // Once its first beat has played, the upcoming harmony becomes the harmony.
+    if reached_upcoming && let Some(next) = upcoming {
+        *conductor = next.conductor.clone();
+        commands.remove_resource::<UpcomingChords>();
     }
 }

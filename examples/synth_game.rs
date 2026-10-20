@@ -14,6 +14,10 @@
 //! | every 6th orb (level up)     | stinger, key ↑  | chord stab on the next bar, key rises a tone   |
 //! | inside the garden            | mix             | the reverb opens into a big, soft hall         |
 //! | hold Space ("dialogue")      | mix             | the music ducks 14 dB under the "voice"        |
+//! | a hunter comes near          | its own synth   | its low hum grows louder and brighter           |
+//!
+//! The band improvises (`rusty_music::improv`): a soloist developing motifs,
+//! a walking bass, voice-led pads, chime arpeggios and generated grooves/fills.
 //!
 //! The mix (`MixPlugin`) puts each musician on a section bus with shared
 //! reverb and echo; the kick sidechains the harmony section, so the pads
@@ -32,15 +36,12 @@ use rand::{RngExt, SeedableRng};
 
 use rusty_music::clock::{Beat, Clock};
 use rusty_music::harmony::Harmony;
-use rusty_music::mix::{Mix, MixPlugin, Mixer, Section, Sidechain};
+use rusty_music::mix::{Mix, MixPlugin, MixScenes, Mixer, Section, Sidechain};
 use rusty_music::instrument::NoteEvent;
-use rusty_music::musicians::arpeggiator::Arpeggiator;
-use rusty_music::musicians::bassist::Bassist;
-use rusty_music::musicians::drummer::{generate_hihat_beat, generate_kick_beat, generate_snare_beat, Drummer, SuperDrummer};
-use rusty_music::musicians::soloist::Soloist;
+use rusty_music::improv::{ChimeArp, Drone, GrooveDrummer, MotifSoloist, VoiceLedPad, WalkingBass};
 use rusty_music::musicians::{Chord, MusicPlayer, Muted};
 use rusty_music::situation::{Dim, Gesture, Layer, MusicState, Quantize, SituationPlugin, Stinger, TempoFollows};
-use rusty_music::synth::{spawn_synth_kit_with, synth, synth_musician, Responds, SynthPatch, SynthPlugin};
+use rusty_music::synth::{spawn_synth_kit_with, synth, synth_musician, MusicListener, Proximity, Responds, SynthPatch, SynthPlugin};
 use rusty_music::MusicPlugin;
 
 const ARENA: Vec2 = Vec2::new(900.0, 600.0);
@@ -52,19 +53,6 @@ const ORBS: u32 = 6;
 const HUNTERS: usize = 4;
 
 // ── Musicians the game owns ───────────────────────────────────────────────────
-
-/// Holds the chord's main tones for a whole bar.
-struct PadPlayer;
-
-impl MusicPlayer for PadPlayer {
-    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, intensity: f32, chord: &Chord) {
-        if beat.beat == 0 && beat.sixteenth == 0 {
-            for note in chord.chord_notes.iter().filter(|n| n.strength >= 0.8) {
-                notes.push(NoteEvent::from_diff(note.midi_note_diff).velocity(0.5 + intensity * 0.5).length(16.0));
-            }
-        }
-    }
-}
 
 /// Plays nothing by itself: an instrument reserved for stingers.
 struct StingerOnly;
@@ -125,6 +113,7 @@ fn main() {
         }))
         .add_plugins((MusicPlugin { beats: 4, note_type: 4, bpm: 100.0 }, SituationPlugin, MixPlugin, SynthPlugin))
         .insert_resource(ClearColor(Color::srgb(0.03, 0.03, 0.08)))
+        .insert_resource(mix_scenes())
         .insert_resource(TempoFollows { dim: Dim::Energy, slow: 92.0, fast: 132.0 })
         .insert_resource(Game { rng: StdRng::seed_from_u64(42), score: 0, level: 1, triumph: 0.0, speed: 0.0, demo: std::env::args().any(|a| a == "--demo") })
         .add_systems(Startup, (setup_world, setup_band))
@@ -139,13 +128,13 @@ fn setup_band(mut commands: Commands, mixer: Res<Mixer>) {
     // The core: always there, but colour and level follow the mood.
     let (node, config) = synth(SynthPatch::sub_bass(), -10.0);
     commands.spawn((
-        synth_musician("Bass", Bassist::default(), -24.0, node, config),
+        synth_musician("Bass", WalkingBass::new(1), -24.0, node, config),
         Section::Bass,
         Responds::default().volume_db(Dim::Intensity, -16.0, -9.0),
     ));
     let (node, config) = synth(SynthPatch::pad(), -6.0);
     commands.spawn((
-        synth_musician("Pad", PadPlayer, -12.0, node, config),
+        synth_musician("Pad", VoiceLedPad::new(2).voices(3), -12.0, node, config),
         Section::Harmony,
         Responds::default().cutoff(Dim::Valence, 400.0, 2_500.0).volume_db(Dim::Tension, -8.0, -14.0),
     ));
@@ -153,7 +142,7 @@ fn setup_band(mut commands: Commands, mixer: Res<Mixer>) {
     // Layers: enter as the situation heats up.
     let (node, config) = synth(SynthPatch::pluck(), -16.0);
     commands.spawn((
-        synth_musician("Arp", Arpeggiator::default(), 0.0, node, config),
+        synth_musician("Arp", ChimeArp::new(3), 0.0, node, config),
         Section::Harmony,
         Responds::default().cutoff(Dim::Tension, 350.0, 4_000.0),
         Layer::above(Dim::Intensity, 0.35),
@@ -161,17 +150,14 @@ fn setup_band(mut commands: Commands, mixer: Res<Mixer>) {
     ));
     let (node, config) = synth(SynthPatch::glide_lead(), -15.0);
     commands.spawn((
-        synth_musician("Lead", Soloist::with_bars(2), 12.0, node, config),
+        synth_musician("Lead", MotifSoloist::new(4), 0.0, node, config),
         Section::Lead,
         Responds::default().cutoff(Dim::Tension, 800.0, 4_500.0),
         Layer::above(Dim::Intensity, 0.6),
         Muted,
     ));
-    let drums = SuperDrummer::new(vec![
-        Drummer::pattern(generate_kick_beat()),
-        Drummer::pattern(generate_snare_beat()),
-        Drummer::pattern(generate_hihat_beat()),
-    ]);
+    // Kit channels follow `improv::kit`: kick, snare, hat.
+    let drums = GrooveDrummer::new(5);
     let kit = vec![(SynthPatch::kick(), 36.0, -8.0), (SynthPatch::snare(), 55.0, -12.0), (SynthPatch::hat(), 60.0, -18.0)];
     // The kick (channel 0) pumps the harmony section: pads dip on every hit.
     let pump = |kit| Box::new(Sidechain::new(kit).channel(0).ducks(&mixer, Section::Harmony, 7.0, 0.22)) as Box<_>;
@@ -205,6 +191,7 @@ fn setup_world(
     ));
     commands.spawn((
         Player { hurt: 0.0 },
+        MusicListener,
         Mesh2d(meshes.add(Rectangle::new(26.0, 26.0))),
         MeshMaterial2d(materials.add(Color::srgb(0.3, 0.9, 1.0))),
         Transform::from_xyz(0.0, -200.0, 1.0),
@@ -213,11 +200,16 @@ fn setup_world(
     let hunter_mat = materials.add(Color::srgb(0.95, 0.2, 0.25));
     for k in 0..HUNTERS {
         let x = -300.0 + k as f32 * 200.0;
+        // Each hunter hums the chord root an octave down; you hear it before you see it.
+        let (node, config) = synth(SynthPatch::saw_lead().named("hum"), -60.0);
         commands.spawn((
             Hunter { heading: Vec2::from_angle(k as f32 * 1.7), turn_in: 0.0 },
             Mesh2d(hunter_mesh.clone()),
             MeshMaterial2d(hunter_mat.clone()),
             Transform::from_xyz(x, 220.0, 1.0),
+            synth_musician(format!("Hunter {k}"), Drone { interval: -12 }, 0.0, node, config.voices(2)),
+            Section::Fx,
+            Proximity::new(40.0, 320.0).volume(-16.0, -60.0).cutoff(250.0, 1_800.0),
         ));
     }
     spawn_orb(&mut commands, &mut meshes, &mut materials, &mut game.rng, Vec2::new(0.0, -200.0));
@@ -441,23 +433,35 @@ fn hud(
 }
 
 /// The mix responds to place and to "dialogue": a hall in the garden, ducking while Space is held.
+/// Two places with their own sound: the open field and the garden's hall.
+fn mix_scenes() -> MixScenes {
+    let mut open = Mix::default();
+    open.reverb.room_size = 0.72;
+    open.section(Section::Harmony).reverb_db = -14.0;
+    open.section(Section::Lead).reverb_db = -16.0;
+    let mut garden = open.clone();
+    garden.reverb.room_size = 0.92;
+    garden.section(Section::Harmony).reverb_db = -6.0;
+    garden.section(Section::Lead).reverb_db = -9.0;
+    MixScenes { glide: 1.5, ..default() }.with("open", open).with("garden", garden)
+}
+
+/// The mix follows place (a scene) and "dialogue" (ducking while Space is held).
 fn shape_mix(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time<Real>>,
     game: Res<Game>,
     player: Single<&Transform, With<Player>>,
+    mut scenes: ResMut<MixScenes>,
     mut mix: ResMut<Mix>,
 ) {
     let in_garden = player.translation.truncate().distance(GARDEN) < GARDEN_RADIUS;
-    let (room, harmony_send, lead_send) = if in_garden { (0.92, -6.0, -9.0) } else { (0.72, -14.0, -16.0) };
+    scenes.activate(if in_garden { "garden" } else { "open" });
     // The demo autopilot "talks" from 40 to 46 s.
     let talking = keys.pressed(KeyCode::Space) || (game.demo && (40.0..46.0).contains(&time.elapsed_secs()));
     let duck = if talking { 14.0 } else { 0.0 };
     // Write only on change: `Mix` change detection drives the audio-graph updates.
-    if mix.reverb.room_size != room || mix.duck_db != duck {
-        mix.reverb.room_size = room;
-        mix.section(Section::Harmony).reverb_db = harmony_send;
-        mix.section(Section::Lead).reverb_db = lead_send;
+    if mix.duck_db != duck {
         mix.duck_db = duck;
     }
 }
