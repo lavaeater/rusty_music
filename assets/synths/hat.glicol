@@ -1,0 +1,6 @@
+// A closed hat: a burst of high-passed noise.
+// @name glicol hat
+// @gain 0.3
+
+~amp: ~trig >> envperc 0.001 0.05
+out: noise 7 >> hpf 8000 1.0 >> mul ~amp

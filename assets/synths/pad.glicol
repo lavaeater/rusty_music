@@ -1,0 +1,12 @@
+// Three detuned saws, slow swell. #cutoff is the brightness knob.
+// @name glicol pad
+// @gain 0.12
+// @param cutoff 1200
+
+~up: ~freq >> mul 1.007
+~down: ~freq >> mul 0.993
+~a: saw ~freq
+~b: saw ~up
+~c: saw ~down
+~amp: ~gate >> adsr 0.6 0.8 0.75 1.5
+out: mix ~a ~b ~c >> lpf #cutoff 0.8 >> mul ~amp

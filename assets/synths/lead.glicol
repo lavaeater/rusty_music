@@ -1,0 +1,15 @@
+// A singing legato lead with vibrato. Try raising #vibrato while it plays.
+// @name glicol lead
+// @mode legato
+// @glide 0.09
+// @gain 0.18
+// @param cutoff 2500
+// @param vibrato 0.006
+
+~vib: sin 5.5 >> mul #vibrato >> add 1
+~f: ~freq >> mul ~vib
+~f2: ~f >> mul 1.004
+~a: saw ~f
+~b: squ ~f2
+~amp: ~gate >> adsr 0.02 0.3 0.7 0.2
+out: mix ~a ~b >> lpf #cutoff 1.5 >> mul ~amp

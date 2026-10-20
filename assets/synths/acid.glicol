@@ -1,0 +1,13 @@
+// A 303-style bass. Overlapping notes slide (legato) without re-triggering
+// the filter envelope, just like the real thing.
+// @name acid
+// @mode legato
+// @glide 0.06
+// @gain 0.3
+// @param cutoff 300
+// @param env 6
+
+~fenv: ~trig >> envperc 0.002 0.18
+~cut: ~fenv >> mul #env >> add 1 >> mul #cutoff
+~amp: ~gate >> adsr 0.002 0.3 0.6 0.05
+out: saw ~freq >> lpf ~cut 6.0 >> mul ~amp

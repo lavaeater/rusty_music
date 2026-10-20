@@ -84,6 +84,9 @@ pub struct SynthPatch {
     pub mode: VoiceMode,
     /// Seconds to slide between overlapping notes (mono / legato modes).
     pub glide: f32,
+    /// When set, the voice is this glicol program instead of `oscs`/`amp`/`filter`
+    /// (mode, glide and gain still apply). See [`super::glicol`].
+    pub glicol: Option<std::sync::Arc<super::glicol::GlicolProgram>>,
 }
 
 impl Default for SynthPatch {
@@ -107,13 +110,24 @@ impl SynthPatch {
             gain: 0.3,
             mode: VoiceMode::Poly,
             glide: 0.0,
+            glicol: None,
         }
     }
 
     /// Longest time a voice keeps sounding after its note is released.
     pub(crate) fn release_secs(&self) -> f32 {
         // Exponential release reaches -100 dB after ~3× its nominal time.
-        self.amp.release * 3.0
+        3.0 * self.glicol.as_ref().map_or(self.amp.release, |g| g.release)
+    }
+
+    /// A patch written in glicol; see [`super::glicol`] for the conventions.
+    pub fn from_glicol(name: &str, source: &str) -> Result<Self, super::glicol::GlicolError> {
+        super::glicol::parse_patch(source, name)
+    }
+
+    /// Index into `SynthNode::params` of a glicol patch's `#name` knob.
+    pub fn param_index(&self, name: &str) -> Option<usize> {
+        self.glicol.as_ref()?.params.iter().position(|(n, _)| n == name)
     }
 
     // ── Presets ──────────────────────────────────────────────────────────────

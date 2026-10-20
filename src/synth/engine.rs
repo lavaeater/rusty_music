@@ -18,6 +18,7 @@ use glicol_synth::{AudioContext, AudioContextBuilder, Buffer, Input, Message, No
 use hashbrown::HashMap;
 
 use super::dsp::{one_pole, Env, Osc, PitchSweep, Svf, Sum};
+use super::glicol::{self, MAX_PARAMS};
 use super::patch::{SynthPatch, VoiceMode};
 
 /// Glicol block size in frames.
@@ -82,11 +83,30 @@ const FILTER: &str = "filter";
 /// freq ─► [pitch sweep] ─┬─► osc ×n (◄─ FM: sine × env) ─► sum ─► × amp env ─► svf ─► × vel ─► × gain
 ///                        └──────────────────────────────────────────────────────┘ (key tracking)
 /// ```
-fn build_graph(patch: &SynthPatch, sr: usize, freq: &Arc<Lane>, gate: &Arc<Lane>, vel: &Arc<Lane>, cutoff: f32, q: f32) -> AudioContext<BLOCK> {
-    let mut ctx = AudioContextBuilder::<BLOCK>::new().sr(sr).channels(1).max_nodes(48).max_edges(80).build();
-    let freq_in = ctx.add_mono_node(LaneNode(freq.clone()));
-    let gate_in = ctx.add_mono_node(LaneNode(gate.clone()));
-    let vel_in = ctx.add_mono_node(LaneNode(vel.clone()));
+fn build_graph(patch: &SynthPatch, sr: usize, lanes: &VoiceLanes, shared: &SharedLanes, cutoff: f32, q: f32) -> AudioContext<BLOCK> {
+    let mut ctx = AudioContextBuilder::<BLOCK>::new().sr(sr).channels(1).max_nodes(96).max_edges(160).build();
+    let freq_in = ctx.add_mono_node(LaneNode(lanes.freq.clone()));
+    let gate_in = ctx.add_mono_node(LaneNode(lanes.gate.clone()));
+    let vel_in = ctx.add_mono_node(LaneNode(lanes.vel.clone()));
+
+    if let Some(program) = &patch.glicol {
+        let inputs = glicol::Inputs {
+            freq: freq_in,
+            gate: gate_in,
+            vel: vel_in,
+            trig: ctx.add_mono_node(LaneNode(lanes.trig.clone())),
+            cutoff: ctx.add_mono_node(LaneNode(shared.cutoff.clone())),
+            params: std::array::from_fn(|k| ctx.add_mono_node(LaneNode(shared.params[k].clone()))),
+        };
+        let out = glicol::build(program, &mut ctx, sr, &inputs);
+        let velocity = ctx.add_mono_node(Mul::new(0.0));
+        ctx.connect(out, velocity);
+        ctx.connect(vel_in, velocity);
+        let gain = ctx.add_mono_node(Mul::new(patch.gain));
+        ctx.connect(velocity, gain);
+        ctx.connect(gain, ctx.destination);
+        return ctx;
+    }
 
     let pitch = match patch.pitch_sweep {
         Some((semitones, seconds)) => {
@@ -155,11 +175,48 @@ fn midi_to_hz(midi: f32) -> f32 {
     440.0 * 2f32.powf((midi - 69.0) / 12.0)
 }
 
+/// The per-voice control inputs.
+struct VoiceLanes {
+    freq: Arc<Lane>,
+    gate: Arc<Lane>,
+    vel: Arc<Lane>,
+    /// A single 1.0 at each note start (glicol patches' `~trig`).
+    trig: Arc<Lane>,
+}
+
+/// Inputs shared by every voice: the live `#cutoff` and `#knobs` of glicol patches.
+struct SharedLanes {
+    cutoff: Arc<Lane>,
+    params: [Arc<Lane>; MAX_PARAMS],
+    /// (value at the end of the last block, target).
+    cutoff_now: (f32, f32),
+    params_now: [(f32, f32); MAX_PARAMS],
+}
+
+impl SharedLanes {
+    /// Ramp each lane from its last value towards its target over one block.
+    fn fill(&mut self) {
+        fn ramp(lane: &Lane, (now, target): &mut (f32, f32)) {
+            // Close ~40% of the gap per block (about 10 ms to settle at 48 kHz).
+            let next = *now + (*target - *now) * 0.4;
+            for i in 0..BLOCK {
+                lane.set(i, *now + (next - *now) * (i + 1) as f32 / BLOCK as f32);
+            }
+            *now = if (next - *target).abs() < 1e-4 * target.abs().max(1.0) { *target } else { next };
+        }
+        ramp(&self.cutoff, &mut self.cutoff_now);
+        for (lane, now) in self.params.iter().zip(&mut self.params_now) {
+            ramp(lane, now);
+        }
+    }
+}
+
 struct Voice {
     graph: AudioContext<BLOCK>,
     freq: Arc<Lane>,
     gate: Arc<Lane>,
     vel: Arc<Lane>,
+    trig: Arc<Lane>,
     note: Option<u32>,
     gate_on: bool,
     hz: f32,
@@ -211,6 +268,7 @@ pub struct SynthEngine {
     held: Vec<(u32, f32, f32)>,
     sr: usize,
     voices: Vec<Voice>,
+    shared: SharedLanes,
     pending: Vec<Pending>,
     block: [f32; BLOCK],
     /// Absolute frame of `block[0]`.
@@ -225,16 +283,26 @@ impl SynthEngine {
     /// Mono and legato patches always get exactly one voice.
     pub fn new(patch: &SynthPatch, voices: usize, sr: usize, cutoff: f32, q: f32) -> Self {
         let voices = if patch.mode == VoiceMode::Poly { voices.max(1) } else { 1 };
+        let defaults: [f32; MAX_PARAMS] = std::array::from_fn(|k| {
+            patch.glicol.as_ref().and_then(|g| g.params.get(k)).map_or(0.0, |p| p.1)
+        });
+        let shared = SharedLanes {
+            cutoff: Lane::new(),
+            params: std::array::from_fn(|_| Lane::new()),
+            cutoff_now: (cutoff, cutoff),
+            params_now: defaults.map(|d| (d, d)),
+        };
         let voices = (0..voices)
             .map(|_| {
-                let (freq, gate, vel) = (Lane::new(), Lane::new(), Lane::new());
-                let mut graph = build_graph(patch, sr, &freq, &gate, &vel, cutoff, q);
+                let lanes = VoiceLanes { freq: Lane::new(), gate: Lane::new(), vel: Lane::new(), trig: Lane::new() };
+                let mut graph = build_graph(patch, sr, &lanes, &shared, cutoff, q);
+                let VoiceLanes { freq, gate, vel, trig } = lanes;
                 // Glicol sizes its processor's maps on the first block; do that now,
                 // not on the audio thread when the voice is first used.
                 graph.next_block();
                 Voice {
                     graph,
-                    freq, gate, vel,
+                    freq, gate, vel, trig,
                     note: None, gate_on: false, hz: 0.0, velocity: 0.0, started: 0,
                     silent_after: i64::MIN,
                     hz_now: 0.0, snap_at: None,
@@ -246,7 +314,7 @@ impl SynthEngine {
             release: (patch.release_secs() * sr as f32) as i64 + BLOCK as i64,
             glide: one_pole(patch.glide, sr as f32),
             held: Vec::with_capacity(MAX_HELD),
-            sr, voices,
+            sr, voices, shared,
             pending: Vec::with_capacity(MAX_PENDING),
             block: [0.0; BLOCK],
             block_start: 0,
@@ -265,11 +333,25 @@ impl SynthEngine {
     pub fn set_filter(&mut self, cutoff: f32, q: f32) {
         let cutoff = cutoff.clamp(20.0, self.sr as f32 * 0.45);
         let q = q.max(0.1);
+        self.shared.cutoff_now.1 = cutoff;
         for v in &mut self.voices {
-            let filter = v.graph.tags[FILTER];
+            // Glicol patches have no tagged filter; they read `#cutoff` instead.
+            let Some(&filter) = v.graph.tags.get(FILTER) else { continue };
             v.graph.send_msg(filter, Message::SetToNumber(0, cutoff));
             v.graph.send_msg(filter, Message::SetToNumber(1, q));
         }
+    }
+
+    /// Targets for a glicol patch's `#knobs`, in `SynthNode::params` order.
+    pub fn set_params(&mut self, params: &[f32]) {
+        for (now, p) in self.shared.params_now.iter_mut().zip(params) {
+            now.1 = *p;
+        }
+    }
+
+    /// No sounding voices and nothing scheduled.
+    pub fn is_silent(&self) -> bool {
+        self.pending.is_empty() && self.active_voices() == 0
     }
 
     pub fn active_voices(&self) -> usize {
@@ -305,7 +387,9 @@ impl SynthEngine {
             v.freq.fill(0, v.hz);
             v.gate.fill(0, if v.gate_on { 1.0 } else { 0.0 });
             v.vel.fill(0, v.velocity);
+            v.trig.fill(0, 0.0);
         }
+        self.shared.fill();
 
         // Apply this block's events in time order. Late events land on frame 0.
         self.pending.sort_unstable_by_key(Pending::key);
@@ -402,6 +486,7 @@ impl SynthEngine {
         v.freq.fill(offset, v.hz);
         v.vel.fill(offset, v.velocity);
         v.gate.fill(offset, 1.0);
+        v.trig.set(offset, 1.0);
         if retrigger {
             // Envelopes restart on a 0 → 1 gate edge.
             v.gate.set(offset, 0.0);
@@ -641,6 +726,123 @@ mod tests {
             assert!(out[frames - SR / 4..].iter().all(|s| s.abs() < 1e-3), "{name}: never fades out");
             assert_eq!(e.active_voices(), 0, "{name}: voices stuck on");
         }
+    }
+
+    fn glicol(code: &str) -> SynthPatch {
+        SynthPatch::from_glicol("test", code).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    fn rms(x: &[f32]) -> f32 {
+        (x.iter().map(|s| s * s).sum::<f32>() / x.len() as f32).sqrt()
+    }
+
+    #[test]
+    fn glicol_voice_plays_notes_and_releases() {
+        let patch = glicol("out: saw ~freq >> lpf 2000 1.0 >> mul ~env\n~env: ~gate >> adsr 0.005 0.1 0.7 0.1");
+        let mut e = engine(patch, 4);
+        e.schedule(NoteMsg::On { id: 1, midi: 57.0, velocity: 1.0 }, 0);
+        e.schedule(NoteMsg::Off { id: 1 }, 12_000);
+        let out = render(&mut e, 0, SR);
+        assert!(rms(&out[2_000..12_000]) > 0.05, "sounds while held");
+        assert!(out[SR / 2..].iter().all(|s| s.abs() < 1e-4), "silent after release");
+        assert_eq!(e.active_voices(), 0);
+    }
+
+    #[test]
+    fn bundled_glicol_patches_load_and_sound() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/synths");
+        let mut count = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("glicol") {
+                continue;
+            }
+            count += 1;
+            let source = std::fs::read_to_string(&path).unwrap();
+            let patch = SynthPatch::from_glicol("file", &source).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            let name = patch.name.clone();
+            let seconds = 1.2 + patch.release_secs() + 0.5;
+            let frames = (seconds * SR as f32) as usize;
+            let mut e = engine(patch, 4);
+            for (k, midi) in [36.0, 48.0, 60.0, 72.0].into_iter().enumerate() {
+                let at = k as i64 * 12_000;
+                e.schedule(NoteMsg::On { id: k as u32, midi, velocity: 1.0 }, at);
+                e.schedule(NoteMsg::Off { id: k as u32 }, at + 9_000);
+            }
+            let out = render(&mut e, 0, frames);
+            let peak = out.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+            println!("{name:>14}: peak {peak:.3}  rms {:.4}", rms(&out));
+            assert!(out.iter().all(|s| s.is_finite()), "{name}: non-finite");
+            assert!(peak > 0.02 && peak < 1.0, "{name}: peak {peak}");
+            assert!(out[frames - SR / 4..].iter().all(|s| s.abs() < 1e-3), "{name}: never fades out");
+        }
+        assert!(count >= 5, "found {count} patches in {}", dir.display());
+    }
+
+    #[test]
+    fn glicol_trig_fires_once_per_note() {
+        // A percussive voice driven only by ~trig: it must restart on every note.
+        let patch = glicol("out: noise 1 >> mul ~env\n~env: ~trig >> envperc 0.001 0.05");
+        let mut e = engine(patch, 2);
+        for k in 0..4 {
+            e.schedule(NoteMsg::On { id: k, midi: 60.0, velocity: 1.0 }, k as i64 * 12_000);
+            e.schedule(NoteMsg::Off { id: k }, k as i64 * 12_000 + 100);
+        }
+        let out = render(&mut e, 0, 48_000);
+        for k in 0..4 {
+            let hit = &out[k * 12_000 + 200..k * 12_000 + 2_000];
+            assert!(rms(hit) > 0.05, "hit {k} sounded");
+        }
+    }
+
+    #[test]
+    fn glicol_knobs_follow_live_values() {
+        let patch = glicol("// @param level 0.0\nout: sin ~freq >> mul #level >> lpf #cutoff 1.0");
+        let mut e = engine(patch, 1);
+        e.schedule(NoteMsg::On { id: 1, midi: 69.0, velocity: 1.0 }, 0);
+        let quiet = render(&mut e, 0, 4_800);
+        assert!(rms(&quiet[1_000..]) < 1e-3, "knob default 0 silences it");
+        e.set_params(&[1.0]);
+        let loud = render(&mut e, 4_800, 9_600);
+        assert!(rms(&loud[4_800..]) > 0.3, "knob raised: {}", rms(&loud[4_800..]));
+        // Pull #cutoff far below the 440 Hz tone: the low-pass takes most of it out.
+        e.set_filter(40.0, 1.0);
+        let dark = render(&mut e, 14_400, 9_600);
+        assert!(rms(&dark[4_800..]) < rms(&loud[4_800..]) * 0.1, "cutoff knob");
+    }
+
+    #[test]
+    fn glicol_legato_glides_like_built_patches() {
+        let patch = glicol("// @mode legato\n// @glide 0.06\nout: tri ~freq >> mul ~env\n~env: ~gate >> adsr 0.01 0.1 0.8 0.1");
+        let mut e = engine(patch, 8);
+        assert_eq!(e.voices.len(), 1);
+        e.schedule(NoteMsg::On { id: 1, midi: 45.0, velocity: 1.0 }, 0);
+        e.schedule(NoteMsg::On { id: 2, midi: 57.0, velocity: 1.0 }, 4_800);
+        render(&mut e, 0, 4_800 + LATENCY as usize + BLOCK);
+        let mid = sounding_hz(&e);
+        assert!(mid > midi_to_hz(45.0) * 1.05 && mid < midi_to_hz(57.0) * 0.95, "mid-glide at {mid}");
+    }
+
+    #[test]
+    fn glicol_rendering_does_not_allocate() {
+        let patch = glicol("// @param drive 2\n~lfo: sin 3 >> mul 300 >> add 900\nout: saw ~freq >> lpf ~lfo 2.0 >> mul #drive >> onepole 0.5 >> mul ~env\n~env: ~gate >> adsr 0.005 0.1 0.6 0.1");
+        let mut e = engine(patch, 8);
+        let mut buf = vec![0.0; 512];
+        e.schedule(NoteMsg::On { id: 0, midi: 60.0, velocity: 1.0 }, 0);
+        for k in 0..20 {
+            e.render(k * 512, &mut buf);
+        }
+        let before = alloc_count::get();
+        let mut frame = 20 * 512;
+        for n in 0..100u32 {
+            e.schedule(NoteMsg::On { id: n, midi: 48.0 + (n % 24) as f32, velocity: 0.7 }, frame);
+            e.schedule(NoteMsg::Off { id: n.wrapping_sub(3) }, frame + 100);
+            e.set_params(&[1.0 + (n % 3) as f32]);
+            e.set_filter(500.0 + n as f32 * 10.0, 2.0);
+            e.render(frame, &mut buf);
+            frame += 512;
+        }
+        assert_eq!(alloc_count::get() - before, 0, "allocations on the render path");
     }
 
     /// `cargo test --release --features synth --lib voice_cost -- --ignored --nocapture`

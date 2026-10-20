@@ -77,6 +77,8 @@ fn poly_blep(t: f32, dt: f32) -> f32 {
 /// 2 = level.
 pub struct Osc {
     wave: Wave,
+    /// Frequency used when nothing is connected to input 0.
+    fixed_hz: f32,
     ratio: f32,
     pulse_width: f32,
     level: f32,
@@ -88,11 +90,16 @@ pub struct Osc {
 
 impl Osc {
     pub fn new(wave: Wave, sr: usize) -> Self {
-        Self { wave, ratio: 1.0, pulse_width: 0.5, level: 1.0, phase: 0.0, noise: 0x9E37_79B9, sr: sr as f32, ports: Ports::default() }
+        Self { wave, fixed_hz: 0.0, ratio: 1.0, pulse_width: 0.5, level: 1.0, phase: 0.0, noise: 0x9E37_79B9, sr: sr as f32, ports: Ports::default() }
     }
 
     pub fn ratio(self, ratio: f32) -> Self {
         Self { ratio, ..self }
+    }
+
+    /// A fixed frequency, for oscillators with no frequency input (LFOs, drones).
+    pub fn fixed(self, hz: f32) -> Self {
+        Self { fixed_hz: hz, ..self }
     }
 
     pub fn pulse_width(self, pulse_width: f32) -> Self {
@@ -139,7 +146,7 @@ impl Node<BLOCK> for Osc {
         let freq = self.ports.get(inputs, 0).copied();
         let pm = self.ports.get(inputs, 1).copied();
         for (i, out) in output[0].iter_mut().enumerate() {
-            let hz = freq.map_or(0.0, |f| f[i]);
+            let hz = freq.map_or(self.fixed_hz, |f| f[i]);
             *out = self.sample(hz, pm.map_or(0.0, |p| p[i]));
         }
     }
@@ -192,6 +199,8 @@ enum Stage {
 /// and repeated notes never click.
 pub struct Env {
     adsr: Adsr,
+    /// Percussive: a rising edge plays attack + decay in full, ignoring the gate's fall.
+    one_shot: bool,
     stage: Stage,
     level: f32,
     gate: bool,
@@ -206,6 +215,7 @@ impl Env {
         let sr = sr as f32;
         Self {
             adsr,
+            one_shot: false,
             stage: Stage::Idle,
             level: 0.0,
             gate: false,
@@ -216,10 +226,15 @@ impl Env {
         }
     }
 
+    /// Glicol's `envperc`: fires on a rising edge (a `~trig` impulse works) and decays to silence.
+    pub fn perc(attack: f32, decay: f32, sr: usize) -> Self {
+        Self { one_shot: true, ..Self::new(Adsr::new(attack, decay, 0.0, decay), sr) }
+    }
+
     fn next(&mut self, gate: bool) -> f32 {
         if gate && !self.gate {
             self.stage = Stage::Attack;
-        } else if !gate && self.gate {
+        } else if !gate && self.gate && !self.one_shot {
             self.stage = Stage::Release;
         }
         self.gate = gate;
@@ -232,7 +247,13 @@ impl Env {
                     self.stage = Stage::Decay;
                 }
             }
-            Stage::Decay => self.level += (self.adsr.sustain - self.level) * self.decay_k,
+            Stage::Decay => {
+                self.level += (self.adsr.sustain - self.level) * self.decay_k;
+                if self.one_shot && self.level < 1e-5 {
+                    self.level = 0.0;
+                    self.stage = Stage::Idle;
+                }
+            }
             Stage::Release => {
                 self.level -= self.level * self.release_k;
                 if self.level < 1e-5 {
@@ -335,6 +356,9 @@ impl Default for FilterMod {
 /// values over ~10 ms, so live game-driven sweeps never zipper.
 pub struct Svf {
     modulation: FilterMod,
+    /// When true, input 1 is the cutoff in Hz (glicol's `lpf ~signal q`)
+    /// instead of the envelope/key/velocity modulation inputs.
+    driven: bool,
     cutoff: f32,
     q: f32,
     target_cutoff: f32,
@@ -351,6 +375,7 @@ impl Svf {
         let sr = sr as f32;
         Self {
             modulation,
+            driven: false,
             cutoff,
             q,
             target_cutoff: cutoff,
@@ -361,6 +386,11 @@ impl Svf {
             ic2: 0.0,
             ports: Ports::default(),
         }
+    }
+
+    /// A filter whose cutoff (Hz) comes from input 1, per sample block.
+    pub fn driven(mode: FilterMode, q: f32, sr: usize) -> Self {
+        Self { driven: true, ..Self::new(FilterMod { mode, ..FilterMod::default() }, 1_000.0, q, sr) }
     }
 
     fn coeffs(&self, cutoff: f32) -> SvfCoeffs {
@@ -423,7 +453,11 @@ impl Node<BLOCK> for Svf {
             {
                 octaves += key_track * (f[i] / 261.63).log2();
             }
-            let coeffs = self.coeffs((self.cutoff * octaves.exp2()).clamp(20.0, max));
+            let cutoff = match (self.driven, env) {
+                (true, Some(signal)) => signal[i],
+                _ => self.cutoff * octaves.exp2(),
+            };
+            let coeffs = self.coeffs(cutoff.clamp(20.0, max));
             for j in i..i + CONTROL {
                 output[0][j] = self.tick(audio[j], &coeffs);
             }

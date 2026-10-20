@@ -287,6 +287,55 @@ on synths (with a sampled 808 kit), with filter cutoffs following intensity.
 | 4.3 | Extract the Firewheel glicol node into `bevy_glicol` (Bevy 0.19, cpal stream removed); `bevy_glicol_ui` edits instruments that rusty_music plays |
 | 4.4 | Optional: glicol sample nodes (`sp`) with samples leaked once on load |
 
+#### Phase 4 results ✅ (4.1, 4.2 and Phase 3's leftovers; 4.3 and 4.4 not done)
+
+- **Glicol text instruments** (`src/synth/glicol.rs`): a voice is ordinary
+  glicol code, parsed with `glicol_parser` (same fork) into an owned,
+  validated program, then built into each voice's graph.
+  - **Reserved inputs:** `~freq`, `~gate`, `~trig` (one-sample impulse per
+    note) and `~vel`. `#name` is a live knob: `#cutoff` follows
+    `SynthNode::cutoff`, and up to 8 others land in `SynthNode::params`. This
+    is roadmap item 3.2; glicol has no `#`, so a pre-pass rewrites knobs to
+    references.
+  - **Comment directives** cover what glicol can't say: `// @name`, `@mode`,
+    `@glide`, `@gain`, `@param name default`.
+  - **Supported nodes:** `sin saw squ tri noise sig mul add lpf hpf adsr
+    envperc onepole delayms mix`, plus references. Oscillators, `adsr`,
+    `envperc` and `lpf`/`hpf` are built from *our* nodes (band-limited,
+    click-free, smoothed), so glicol text sounds as good as the Rust presets.
+  - **Errors explain themselves.** Glicol's own syntax errors keep their
+    line/column. Unknown references, feedback loops and sources fed an input
+    are caught. Unsupported nodes say what to use instead (`reverb` → the
+    mixer, `seq` → `~freq`/`~gate`, `imp` → `~trig`, `bd`/`sn`/`hh` →
+    `envperc`; glicol's drum compounds hard-code 44.1 kHz and stereo).
+- **Assets and hot reload** (`src/synth/asset.rs`): `.glicol` files load as
+  `GlicolPatch` assets. A `GlicolSynth` component (or `glicol_musician`)
+  becomes a `SynthNode` once its patch loads. On file change the running node
+  swaps engines without being rebuilt or reconnected: the new engine is built
+  on the main thread and sent as a Firewheel `Custom` event. The retired
+  engine lets its sounding voices ring out and is freed by Firewheel's
+  collector, never on the audio thread. A broken edit is reported and the
+  last good version keeps playing.
+- **Preset files** in `assets/synths/`: acid, pluck, pad, lead, wobble, kick,
+  hat. A test loads and renders every file there.
+- **Mixer routing fix**: synths are now routed to their section by a system
+  that runs just before seedling acquires nodes, instead of an observer.
+  Glicol synths get their node only after loading, and both orders (section
+  first or node first) must route exactly once.
+- **`examples/synth_live.rs`**: a band made entirely of `.glicol` files,
+  with intensity/tension driving their `#knobs`. Verified by editing
+  `acid.glicol` during playback: saw → square reloaded live, then a syntax
+  error printed `13:18 expected node` while the old patch kept playing, then
+  the restore reloaded. The recording had no gaps or clicks at the swaps.
+- **Not done:**
+  - **4.3** (moving the Firewheel glicol node into `bevy_glicol`, Bevy 0.18 →
+    0.19, cpal stream removed, `bevy_glicol_ui` editing these instruments)
+    touches a separate repo. It is mostly moving `src/synth/` and swapping
+    that crate's backend; best done as its own step.
+  - **4.4** (glicol `sp` sample nodes): samples already play through the
+    mixer's section pools.
+
+
 ### Phase 5 — Mixing and effects
 | # | Task |
 |---|------|
@@ -402,8 +451,8 @@ on synths (with a sampled 808 kit), with filter cutoffs following intensity.
 
 ## 6. Suggested order of work
 
-*Status: Phases 0, 1, 2, 3, 5 and 6 are done; Phase 4 (glicol text, hot
-reload, bevy_glicol extraction) remains.*
+*Status: Phases 0–6 are done, except 4.3 (moving the synth into
+`bevy_glicol`) and 4.4 (glicol sample nodes).*
 
 Phase 0 first, because it decides the DSP backend. Then Phase 1 and Phase 2
 together, since both change the `MusicPlayer` contract and are best done in one
