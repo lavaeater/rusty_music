@@ -37,7 +37,7 @@ use bevy::app::ScheduleRunnerPlugin;
 use bevy::asset::io::AssetSourceBuilder;
 use bevy::asset::{AssetApp, AssetPlugin};
 use bevy::prelude::*;
-use bevy_seedling::prelude::{AudioSample, PlaybackSettings, SamplePlayer, Volume};
+use bevy_seedling::prelude::{AudioSample, PlaybackSettings, SamplePlayer};
 
 use ratatui::crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
@@ -64,7 +64,8 @@ use rusty_music::musicians::drummer::{
 use rusty_music::musicians::soloist::Soloist;
 use rusty_music::musicians::arpeggiator::Arpeggiator;
 use rusty_music::musicians::bassist::Bassist;
-use rusty_music::musicians::{midi_diff_to_pitch, Chord, MusicPlayer, Muted, Note, Sampler, TonalPlayer};
+use rusty_music::instrument::{Channels, Instrument, NoteEvent};
+use rusty_music::musicians::{Chord, MusicPlayer, Muted, Note, Sampler, TonalPlayer};
 use rusty_music::musicians::Musician;
 use rusty_music::player::Intensity;
 use rusty_music::MusicPlugin;
@@ -177,12 +178,10 @@ fn chords_g_major() -> Vec<Chord> {
 //  Custom MusicPlayer implementations
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct OrchestraPad {
-    sampler: Sampler,
-}
+struct OrchestraPad;
 
 impl MusicPlayer for OrchestraPad {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         if base_intensity < 0.12 || beat.sixteenth != 0 {
             return;
         }
@@ -196,27 +195,22 @@ impl MusicPlayer for OrchestraPad {
             return;
         }
         if let Some(note) = TonalPlayer::get_chord_note(chord, 1.0 - base_intensity) {
-            let vol = self.sampler.volume as f32 - 3.0 + base_intensity * 4.0;
-            commands.spawn((
-                SamplePlayer::new(self.sampler.handle.clone()).with_volume(Volume::Decibels(vol)),
-                PlaybackSettings::default().with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-            ));
+            out.push(NoteEvent::from_diff(note.midi_note_diff).gain_db(-3.0 + base_intensity * 4.0).length(4.0));
         }
     }
 }
 
 struct OstinatoStrings {
-    sampler: Sampler,
     seq_idx: u32,
 }
 
 impl MusicPlayer for OstinatoStrings {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         if base_intensity < 0.15 {
             return;
         }
         let step: u32 = if base_intensity < 0.42 { 4 } else if base_intensity < 0.68 { 2 } else { 1 };
-        if TonalPlayer::flat_step(&beat) % step != 0 {
+        if !TonalPlayer::flat_step(&beat).is_multiple_of(step) {
             return;
         }
         let notes = &chord.chord_notes;
@@ -228,22 +222,18 @@ impl MusicPlayer for OstinatoStrings {
         if note.strength < (1.0 - base_intensity) {
             return;
         }
-        let vol = self.sampler.volume as f32 - 1.0 + base_intensity * 2.0;
-        commands.spawn((
-            SamplePlayer::new(self.sampler.handle.clone()).with_volume(Volume::Decibels(vol)),
-            PlaybackSettings::default().with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-        ));
+        out.push(NoteEvent::from_diff(note.midi_note_diff).gain_db(-1.0 + base_intensity * 2.0).length(step as f32));
     }
 }
 
+/// Chord hits; its instrument is a `Channels` of hit samples cycled for variety.
 struct BrassSection {
-    samples: Vec<Handle<AudioSample>>,
-    volume: f32,
+    num_samples: usize,
 }
 
 impl MusicPlayer for BrassSection {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
-        if base_intensity < 0.42 || self.samples.is_empty() {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
+        if base_intensity < 0.42 || self.num_samples == 0 {
             return;
         }
         let on_quarter = beat.sixteenth == 0 && matches!(beat.beat, 0 | 2)
@@ -259,39 +249,25 @@ impl MusicPlayer for BrassSection {
             .take(num_voices)
             .collect();
         for (i, note) in strong_notes.iter().enumerate() {
-            let vol = self.volume - i as f32 * 1.8;
-            let si = (beat.beat as usize + beat.bar_count as usize * 3 + i) % self.samples.len();
-            commands.spawn((
-                SamplePlayer::new(self.samples[si].clone()).with_volume(Volume::Decibels(vol)),
-                PlaybackSettings::default().with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-            ));
+            let si = (beat.beat as usize + beat.bar_count as usize * 3 + i) % self.num_samples;
+            out.push(NoteEvent::from_diff(note.midi_note_diff).gain_db(-(i as f32) * 1.8).channel(si));
         }
     }
 }
 
-struct CymbalLayer {
-    crash: Handle<AudioSample>,
-    ride: Handle<AudioSample>,
-    volume: f32,
-}
+/// Crash (channel 0) and ride (channel 1).
+struct CymbalLayer;
 
 impl MusicPlayer for CymbalLayer {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
         if beat.beat == 0 && beat.sixteenth == 0 && base_intensity > 0.52 {
-            if beat.bar_count % 2 == 0 || base_intensity > 0.82 {
-                let vol = self.volume - 8.0 + (base_intensity - 0.52).max(0.0) / 0.48 * 9.0;
-                commands.spawn((
-                    SamplePlayer::new(self.crash.clone()).with_volume(Volume::Decibels(vol)),
-                    PlaybackSettings::default(),
-                ));
+            if beat.bar_count.is_multiple_of(2) || base_intensity > 0.82 {
+                let vol = -8.0 + (base_intensity - 0.52).max(0.0) / 0.48 * 9.0;
+                out.push(NoteEvent::from_diff(0).gain_db(vol).channel(0));
             }
         }
         if base_intensity > 0.48 && beat.sixteenth == 2 && beat.beat % 2 == 1 {
-            commands.spawn((
-                SamplePlayer::new(self.ride.clone())
-                    .with_volume(Volume::Decibels(self.volume - 6.0 + base_intensity * 3.0)),
-                PlaybackSettings::default(),
-            ));
+            out.push(NoteEvent::from_diff(0).gain_db(-6.0 + base_intensity * 3.0).channel(1));
         }
     }
 }
@@ -547,27 +523,35 @@ fn spawn_musicians(
 
         macro_rules! spawn {
             ($player:expr) => {{
+                let musician = Musician::new(cfg.name.clone(), $player);
                 if cfg.muted {
-                    commands.spawn((Musician::new(cfg.name.clone(), $player), Muted)).id()
+                    commands.spawn((musician, Muted)).id()
                 } else {
-                    commands.spawn(Musician::new(cfg.name.clone(), $player)).id()
+                    commands.spawn(musician).id()
+                }
+            }};
+            ($player:expr, $instrument:expr) => {{
+                let musician = Musician::new(cfg.name.clone(), $player).with_instrument($instrument);
+                if cfg.muted {
+                    commands.spawn((musician, Muted)).id()
+                } else {
+                    commands.spawn(musician).id()
                 }
             }};
         }
+        // Every sample of this config, one channel each.
+        let channels = || {
+            Channels(cfg.samples.iter().cloned().map(|path| {
+                Box::new(Sampler { handle: load(path), volume: cfg.volume as f64 }) as Box<dyn Instrument>
+            }).collect())
+        };
 
         let entity = match cfg.kind.as_str() {
             "drummer"    => spawn!(Drummer::new(s(0), drum_pattern(&cfg.pattern))),
-            "pad"        => spawn!(OrchestraPad { sampler: s(0) }),
-            "ostinato" | "bass" => spawn!(OstinatoStrings { sampler: s(0), seq_idx: 0 }),
-            "brass"      => spawn!(BrassSection {
-                samples: cfg.samples.iter().cloned().map(load).collect(),
-                volume: cfg.volume,
-            }),
-            "cymbal"     => spawn!(CymbalLayer {
-                crash: load(cfg.samples.get(0).cloned().unwrap_or_default()),
-                ride:  load(cfg.samples.get(1).cloned().unwrap_or_default()),
-                volume: cfg.volume,
-            }),
+            "pad"        => spawn!(OrchestraPad, s(0)),
+            "ostinato" | "bass" => spawn!(OstinatoStrings { seq_idx: 0 }, s(0)),
+            "brass"      => spawn!(BrassSection { num_samples: cfg.samples.len() }, channels()),
+            "cymbal"     => spawn!(CymbalLayer, Channels(vec![Box::new(s(0)), Box::new(s(1))])),
             "soloist"    => spawn!(Soloist::new(s(0), cfg.record_bars)),
             "arpeggiator"=> spawn!(Arpeggiator::new(s(0))),
             _            => spawn!(Bassist::new(s(0))),

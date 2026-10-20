@@ -5,11 +5,12 @@ pub mod soloist;
 pub mod arpeggiator;
 
 use std::cmp::Ordering;
-use bevy::prelude::{Commands, Component};
+use bevy::prelude::Component;
 use bevy_seedling::prelude::AudioSample;
 use bevy::asset::Handle;
 use rand::seq::IteratorRandom;
 use crate::clock::Beat;
+use crate::instrument::{Instrument, NoteEvent, Silent};
 
 /// 16th-note steps per bar in 4/4.
 pub const STEPS_PER_BAR: u32 = 16;
@@ -32,8 +33,16 @@ pub fn midi_diff_to_pitch(midi_diff: i32) -> f64 {
     }
 }
 
+/// A musician's brain: on every beat it decides which notes to play.
 pub trait MusicPlayer: Send + Sync {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord);
+    /// Push the notes to play on `beat` into `notes`.
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord);
+
+    /// An instrument this player brings along (e.g. the sampler passed to
+    /// `Drummer::new`). Used by [`Musician::new`] when none is given.
+    fn take_instrument(&mut self) -> Option<Box<dyn Instrument>> {
+        None
+    }
 }
 
 pub struct Sampler {
@@ -102,18 +111,28 @@ impl TonalPlayer {
 #[derive(Component)]
 pub struct Muted;
 
+/// A musician entity: a [`MusicPlayer`] deciding notes, and the
+/// [`Instrument`] that sounds them. Put a `SynthNode` on the same entity and
+/// give it a `SynthInstrument` to play a synth.
 #[derive(Component)]
 pub struct Musician {
     pub name: String,
     pub player: Box<dyn MusicPlayer>,
+    pub instrument: Box<dyn Instrument>,
 }
 
 impl Musician {
+    /// Uses the player's own instrument if it brings one, else [`Silent`].
     pub fn new(name: String, player: impl MusicPlayer + 'static) -> Self {
-        Self {
-            name,
-            player: Box::new(player),
-        }
+        let mut player: Box<dyn MusicPlayer> = Box::new(player);
+        let instrument = player.take_instrument().unwrap_or_else(|| Box::new(Silent));
+        Self { name, player, instrument }
+    }
+
+    /// Play through `instrument` instead.
+    pub fn with_instrument(mut self, instrument: impl Instrument + 'static) -> Self {
+        self.instrument = Box::new(instrument);
+        self
     }
 }
 
@@ -123,14 +142,13 @@ mod tests {
 
     fn test_beat(beat: u32, sixteenth: u32) -> Beat {
         Beat {
-            elapsed_time: 0.0,
             beat,
             sixteenth,
             bar_count: 0,
             beat_count: beat,
             sixteenth_count: beat * 4 + sixteenth,
             time_bars: beat as f32 / 4.0 + sixteenth as f32 / 16.0,
-            overshoot: 0.0,
+            ..Default::default()
         }
     }
 

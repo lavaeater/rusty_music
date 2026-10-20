@@ -1,0 +1,10 @@
+// A plucked square: the filter snaps shut like a damped string.
+// @name glicol pluck
+// @gain 0.35
+// @param cutoff 600
+// @param bright 4
+
+~fenv: ~trig >> envperc 0.001 0.15
+~cut: ~fenv >> mul #bright >> add 1 >> mul #cutoff
+~amp: ~trig >> envperc 0.001 0.45
+out: squ ~freq >> lpf ~cut 1.0 >> mul ~amp

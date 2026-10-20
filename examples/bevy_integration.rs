@@ -26,7 +26,8 @@ use rusty_music::musicians::drummer::{
     generate_half_time_snare_beat, generate_snare_fill_beat, SuperDrummer,
 };
 use rusty_music::musicians::soloist::Soloist;
-use rusty_music::musicians::{midi_diff_to_pitch, Chord, MusicPlayer, Note, Sampler, TonalPlayer};
+use rusty_music::instrument::{Channels, NoteEvent};
+use rusty_music::musicians::{Chord, MusicPlayer, Note, Sampler, TonalPlayer};
 use rusty_music::musicians::Musician;
 use rusty_music::player::Intensity;
 use rusty_music::{create_drummer_only, MusicPlugin};
@@ -69,12 +70,12 @@ fn epic_chords() -> Vec<Chord> {
 
 // ── Custom MusicPlayer implementations ───────────────────────────────────────
 
-struct OrchestraPad {
-    sampler: Sampler,
-}
+/// Orchestral pad / string sustain.
+/// Triggers on quarter-note positions; more beats become active as intensity rises.
+struct OrchestraPad;
 
 impl MusicPlayer for OrchestraPad {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         if base_intensity < 0.12 || beat.sixteenth != 0 {
             return;
         }
@@ -89,108 +90,110 @@ impl MusicPlayer for OrchestraPad {
         }
         let min_strength = 1.0 - base_intensity;
         if let Some(note) = TonalPlayer::get_chord_note(chord, min_strength) {
-            let vol = self.sampler.volume as f32 - 3.0 + base_intensity * 4.0;
-            commands.spawn((
-                SamplePlayer::new(self.sampler.handle.clone()).with_volume(Volume::Decibels(vol)),
-                PlaybackSettings::default().with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-            ));
+            // Swell the volume as intensity rises
+            notes.push(NoteEvent::from_diff(note.midi_note_diff).gain_db(-3.0 + base_intensity * 4.0).length(4.0));
         }
     }
 }
 
+/// String ostinato: ascending repeating arpeggio.
+/// Rate scales with intensity: quarter → 8th → 16th notes.
 struct OstinatoStrings {
-    sampler: Sampler,
     seq_idx: u32,
 }
 
 impl MusicPlayer for OstinatoStrings {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         if base_intensity < 0.22 {
             return;
         }
-        let step: u32 = if base_intensity < 0.42 { 4 }
-                        else if base_intensity < 0.68 { 2 }
-                        else { 1 };
+        let step: u32 = if base_intensity < 0.42 { 4 }   // quarter notes
+                        else if base_intensity < 0.68 { 2 } // 8th notes
+                        else { 1 };                          // 16th notes
+
         if TonalPlayer::flat_step(&beat) % step != 0 {
             return;
         }
+
         let notes = &chord.chord_notes;
         if notes.is_empty() {
             return;
         }
         let note = &notes[(self.seq_idx as usize) % notes.len()];
         self.seq_idx = self.seq_idx.wrapping_add(1);
+
         if note.strength < (1.0 - base_intensity) {
             return;
         }
-        let vol = self.sampler.volume as f32 - 1.0 + base_intensity * 2.0;
-        commands.spawn((
-            SamplePlayer::new(self.sampler.handle.clone()).with_volume(Volume::Decibels(vol)),
-            PlaybackSettings::default().with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-        ));
+
+        out.push(NoteEvent::from_diff(note.midi_note_diff).gain_db(-1.0 + base_intensity * 2.0).length(step as f32));
     }
 }
 
+/// Brass section: multi-voice chord hits.
+///
+/// The key feature: at high intensity this plays 2–3 simultaneous notes,
+/// each at a different chord-tone pitch, creating a thick orchestral brass chord.
+/// Its instrument is a `Channels` of hit samples, cycled for timbral variety.
 struct BrassSection {
-    samples: Vec<Handle<AudioSample>>,
-    volume: f32,
+    num_samples: usize,
 }
 
 impl MusicPlayer for BrassSection {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
-        if base_intensity < 0.42 || self.samples.is_empty() {
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
+        if base_intensity < 0.42 || self.num_samples == 0 {
             return;
         }
+
+        // Strong beats at all intensities; weak beats only at high
         let on_quarter = beat.sixteenth == 0 && match beat.beat {
             0 | 2 => true,
             1 | 3 => base_intensity > 0.75,
             _ => false,
         };
+        // Syncopated "and of 2" accent near climax
         let syncopated = base_intensity > 0.88 && beat.beat == 1 && beat.sixteenth == 2;
+
         if !on_quarter && !syncopated {
             return;
         }
+
+        // Stack 1–3 simultaneous voices for orchestral chord thickness
         let num_voices: usize = if base_intensity > 0.85 { 3 }
                                 else if base_intensity > 0.62 { 2 }
                                 else { 1 };
+
         let min_strength = (1.0 - base_intensity).max(0.0);
         let strong_notes: Vec<&Note> = chord.chord_notes.iter()
             .filter(|n| n.strength >= min_strength)
             .take(num_voices)
             .collect();
+
         for (i, note) in strong_notes.iter().enumerate() {
-            let vol = self.volume - i as f32 * 1.8;
-            let si = (beat.beat as usize + beat.bar_count as usize * 3 + i) % self.samples.len();
-            commands.spawn((
-                SamplePlayer::new(self.samples[si].clone()).with_volume(Volume::Decibels(vol)),
-                PlaybackSettings::default().with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-            ));
+            // Cycle through different hit samples for variation;
+            // each additional voice is slightly quieter for blend.
+            let sample_idx = (beat.beat as usize + beat.bar_count as usize * 3 + i)
+                % self.num_samples;
+            notes.push(NoteEvent::from_diff(note.midi_note_diff).gain_db(-(i as f32) * 1.8).channel(sample_idx));
         }
     }
 }
 
-struct CymbalLayer {
-    crash: Handle<AudioSample>,
-    ride: Handle<AudioSample>,
-}
+/// Cymbal layer: crash swells and ride shimmer. Channel 0 = crash, 1 = ride.
+struct CymbalLayer;
 
 impl MusicPlayer for CymbalLayer {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
+        // Crash on downbeat of every 2nd bar (every bar at climax)
         if beat.beat == 0 && beat.sixteenth == 0 && base_intensity > 0.52 {
             if beat.bar_count % 2 == 0 || base_intensity > 0.82 {
                 let vol = -8.0 + (base_intensity - 0.52).max(0.0) / 0.48 * 9.0;
-                commands.spawn((
-                    SamplePlayer::new(self.crash.clone()).with_volume(Volume::Decibels(vol)),
-                    PlaybackSettings::default(),
-                ));
+                notes.push(NoteEvent::from_diff(0).gain_db(vol).channel(0));
             }
         }
+        // Ride shimmer on off-beats at medium intensity
         if base_intensity > 0.48 && beat.sixteenth == 2 && beat.beat % 2 == 1 {
-            commands.spawn((
-                SamplePlayer::new(self.ride.clone())
-                    .with_volume(Volume::Decibels(-6.0 + base_intensity * 3.0)),
-                PlaybackSettings::default(),
-            ));
+            notes.push(NoteEvent::from_diff(0).gain_db(-6.0 + base_intensity * 3.0).channel(1));
         }
     }
 }
@@ -314,7 +317,7 @@ fn setup(
     // HUD — absolute-positioned UI text
     commands.spawn((
         Text::new(""),
-        TextFont { font_size: 15.0, ..default() },
+        TextFont { font_size: FontSize::Px(15.0), ..default() },
         TextColor(Color::WHITE),
         Node {
             position_type: PositionType::Absolute,
@@ -369,24 +372,29 @@ fn setup(
 
     commands.spawn(Musician::new(
         "Pad".to_string(),
-        OrchestraPad { sampler: Sampler { handle: pad_h, volume: -1.0 } },
-    ));
+        OrchestraPad,
+    ).with_instrument(Sampler { handle: pad_h, volume: -1.0 }));
     commands.spawn(Musician::new(
         "Strings".to_string(),
-        OstinatoStrings { sampler: Sampler { handle: pluck_h, volume: -2.0 }, seq_idx: 0 },
-    ));
+        OstinatoStrings { seq_idx: 0 },
+    ).with_instrument(Sampler { handle: pluck_h, volume: -2.0 }));
     commands.spawn(Musician::new(
         "Bass".to_string(),
-        OstinatoStrings { sampler: Sampler { handle: moog_h, volume: -1.0 }, seq_idx: 3 },
-    ));
+        OstinatoStrings { seq_idx: 3 },
+    ).with_instrument(Sampler { handle: moog_h, volume: -1.0 }));
     commands.spawn(Musician::new(
         "Brass".to_string(),
-        BrassSection { samples: vec![hit1_h, hit2_h, hit3_h], volume: -1.0 },
-    ));
+        BrassSection { num_samples: 3 },
+    ).with_instrument(Channels::default()
+        .with(Sampler { handle: hit1_h, volume: -1.0 })
+        .with(Sampler { handle: hit2_h, volume: -1.0 })
+        .with(Sampler { handle: hit3_h, volume: -1.0 })));
     commands.spawn(Musician::new(
         "Cymbals".to_string(),
-        CymbalLayer { crash: crash_h, ride: ride_h },
-    ));
+        CymbalLayer,
+    ).with_instrument(Channels::default()
+        .with(Sampler { handle: crash_h, volume: 0.0 })
+        .with(Sampler { handle: ride_h, volume: 0.0 })));
     commands.spawn(Musician::new(
         "Lead".to_string(),
         Soloist::new(Sampler { handle: sax_h, volume: -1.0 }, 4),
@@ -506,7 +514,7 @@ fn update_visuals(
     }
 
     // Relic colour: dim amber → bright gold-white
-    if let Some(mat) = color_mats.get_mut(&game.relic_mat) {
+    if let Some(mut mat) = color_mats.get_mut(&game.relic_mat) {
         mat.color = Color::srgb(1.0, 0.65 + i * 0.30, i * 0.35);
     }
 
@@ -523,7 +531,7 @@ fn update_visuals(
         } else {
             0.05
         };
-        if let Some(mat) = color_mats.get_mut(mat_h) {
+        if let Some(mut mat) = color_mats.get_mut(mat_h) {
             let [r, g, b] = zone_rgb[idx];
             mat.color = Color::srgba(r, g, b, alpha);
         }

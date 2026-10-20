@@ -1,7 +1,6 @@
-use bevy::prelude::Commands;
-use bevy_seedling::prelude::{PlaybackSettings, SamplePlayer, Volume};
 use crate::clock::Beat;
-use crate::musicians::{Chord, midi_diff_to_pitch, MusicPlayer, Sampler};
+use crate::instrument::{Instrument, NoteEvent};
+use crate::musicians::{Chord, MusicPlayer, Sampler};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ArpeggioMode {
@@ -14,7 +13,8 @@ pub enum ArpeggioMode {
 }
 
 pub struct Arpeggiator {
-    pub sampler: Sampler,
+    /// Handed to the musician as its instrument; `None` once taken.
+    pub sampler: Option<Sampler>,
     pub arpeggio_mode: ArpeggioMode,
     /// When true, occasionally substitutes scale notes for chord tones at high intensity.
     pub use_scale_runs: bool,
@@ -25,16 +25,23 @@ pub struct Arpeggiator {
     pub next_sixteenth: u32,
 }
 
-impl Arpeggiator {
-    pub fn new(sampler: Sampler) -> Self {
+/// An arpeggiator with no instrument of its own; give its `Musician` one.
+impl Default for Arpeggiator {
+    fn default() -> Self {
         Self {
-            sampler,
+            sampler: None,
             arpeggio_mode: ArpeggioMode::Auto,
             use_scale_runs: false,
             some_index: 0,
             ping_pong_dir: 1,
             next_sixteenth: 0,
         }
+    }
+}
+
+impl Arpeggiator {
+    pub fn new(sampler: Sampler) -> Self {
+        Self { sampler: Some(sampler), ..Self::default() }
     }
 
     fn advance_index(&mut self, len: u32, mode: ArpeggioMode) -> u32 {
@@ -68,7 +75,11 @@ impl Arpeggiator {
 }
 
 impl MusicPlayer for Arpeggiator {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn take_instrument(&mut self) -> Option<Box<dyn Instrument>> {
+        self.sampler.take().map(|s| Box::new(s) as Box<dyn Instrument>)
+    }
+
+    fn play(&mut self, beat: Beat, notes_out: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         let wait_ticks: u32 = if base_intensity < 0.4 {
             4
         } else if base_intensity < 0.7 {
@@ -109,12 +120,7 @@ impl MusicPlayer for Arpeggiator {
         let note_index = self.advance_index(len, effective_mode);
 
         if let Some(note) = notes.get(note_index as usize) {
-            commands.spawn((
-                SamplePlayer::new(self.sampler.handle.clone())
-                    .with_volume(Volume::Decibels(self.sampler.volume as f32)),
-                PlaybackSettings::default()
-                    .with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-            ));
+            notes_out.push(NoteEvent::from_diff(note.midi_note_diff).length(wait_ticks as f32));
         }
     }
 }
@@ -131,7 +137,7 @@ mod tests {
 
     fn make_arp() -> Arpeggiator {
         Arpeggiator {
-            sampler: Sampler { handle: Handle::<AudioSample>::default(), volume: 1.0 },
+            sampler: Some(Sampler { handle: Handle::<AudioSample>::default(), volume: 1.0 }),
             arpeggio_mode: ArpeggioMode::Up,
             use_scale_runs: false,
             some_index: 0,

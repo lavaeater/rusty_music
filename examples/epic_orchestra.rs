@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 use bevy::app::ScheduleRunnerPlugin;
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
-use bevy_seedling::prelude::{AudioSample, PlaybackSettings, SamplePlayer, Volume};
+use bevy_seedling::prelude::AudioSample;
 
 use ratatui::crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
@@ -46,7 +46,8 @@ use rusty_music::musicians::drummer::{
     generate_half_time_snare_beat, generate_snare_fill_beat, SuperDrummer,
 };
 use rusty_music::musicians::soloist::Soloist;
-use rusty_music::musicians::{midi_diff_to_pitch, Chord, MusicPlayer, Note, Sampler, TonalPlayer};
+use rusty_music::instrument::{Channels, NoteEvent};
+use rusty_music::musicians::{Chord, MusicPlayer, Note, Sampler, TonalPlayer};
 use rusty_music::musicians::Musician;
 use rusty_music::player::Intensity;
 use rusty_music::{create_drummer_only, MusicPlugin};
@@ -119,12 +120,10 @@ fn epic_chords() -> Vec<Chord> {
 
 /// Orchestral pad / string sustain.
 /// Triggers on quarter-note positions; more beats become active as intensity rises.
-struct OrchestraPad {
-    sampler: Sampler,
-}
+struct OrchestraPad;
 
 impl MusicPlayer for OrchestraPad {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         if base_intensity < 0.12 || beat.sixteenth != 0 {
             return;
         }
@@ -140,13 +139,7 @@ impl MusicPlayer for OrchestraPad {
         let min_strength = 1.0 - base_intensity;
         if let Some(note) = TonalPlayer::get_chord_note(chord, min_strength) {
             // Swell the volume as intensity rises
-            let vol = self.sampler.volume as f32 - 3.0 + base_intensity * 4.0;
-            commands.spawn((
-                SamplePlayer::new(self.sampler.handle.clone())
-                    .with_volume(Volume::Decibels(vol)),
-                PlaybackSettings::default()
-                    .with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-            ));
+            notes.push(NoteEvent::from_diff(note.midi_note_diff).gain_db(-3.0 + base_intensity * 4.0).length(4.0));
         }
     }
 }
@@ -154,12 +147,11 @@ impl MusicPlayer for OrchestraPad {
 /// String ostinato: ascending repeating arpeggio.
 /// Rate scales with intensity: quarter → 8th → 16th notes.
 struct OstinatoStrings {
-    sampler: Sampler,
     seq_idx: u32,
 }
 
 impl MusicPlayer for OstinatoStrings {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
+    fn play(&mut self, beat: Beat, out: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
         if base_intensity < 0.22 {
             return;
         }
@@ -182,29 +174,22 @@ impl MusicPlayer for OstinatoStrings {
             return;
         }
 
-        let vol = self.sampler.volume as f32 - 1.0 + base_intensity * 2.0;
-        commands.spawn((
-            SamplePlayer::new(self.sampler.handle.clone())
-                .with_volume(Volume::Decibels(vol)),
-            PlaybackSettings::default()
-                .with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-        ));
+        out.push(NoteEvent::from_diff(note.midi_note_diff).gain_db(-1.0 + base_intensity * 2.0).length(step as f32));
     }
 }
 
 /// Brass section: multi-voice chord hits.
 ///
-/// The key feature: at high intensity this spawns 2–3 simultaneous SamplePlayers,
+/// The key feature: at high intensity this plays 2–3 simultaneous notes,
 /// each at a different chord-tone pitch, creating a thick orchestral brass chord.
+/// Its instrument is a `Channels` of hit samples, cycled for timbral variety.
 struct BrassSection {
-    /// Multiple samples for timbral variety between hits.
-    samples: Vec<Handle<AudioSample>>,
-    volume: f32,
+    num_samples: usize,
 }
 
 impl MusicPlayer for BrassSection {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, chord: &Chord) {
-        if base_intensity < 0.42 || self.samples.is_empty() {
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, chord: &Chord) {
+        if base_intensity < 0.42 || self.num_samples == 0 {
             return;
         }
 
@@ -233,47 +218,30 @@ impl MusicPlayer for BrassSection {
             .collect();
 
         for (i, note) in strong_notes.iter().enumerate() {
-            // Each additional voice is slightly quieter for blend
-            let vol = self.volume - i as f32 * 1.8;
-            // Cycle through different hit samples for variation
+            // Cycle through different hit samples for variation;
+            // each additional voice is slightly quieter for blend.
             let sample_idx = (beat.beat as usize + beat.bar_count as usize * 3 + i)
-                % self.samples.len();
-            commands.spawn((
-                SamplePlayer::new(self.samples[sample_idx].clone())
-                    .with_volume(Volume::Decibels(vol)),
-                PlaybackSettings::default()
-                    .with_speed(midi_diff_to_pitch(note.midi_note_diff)),
-            ));
+                % self.num_samples;
+            notes.push(NoteEvent::from_diff(note.midi_note_diff).gain_db(-(i as f32) * 1.8).channel(sample_idx));
         }
     }
 }
 
-/// Cymbal layer: crash swells and ride shimmer.
-struct CymbalLayer {
-    crash: Handle<AudioSample>,
-    ride: Handle<AudioSample>,
-}
+/// Cymbal layer: crash swells and ride shimmer. Channel 0 = crash, 1 = ride.
+struct CymbalLayer;
 
 impl MusicPlayer for CymbalLayer {
-    fn play(&mut self, beat: Beat, commands: &mut Commands, base_intensity: f32, _chord: &Chord) {
+    fn play(&mut self, beat: Beat, notes: &mut Vec<NoteEvent>, base_intensity: f32, _chord: &Chord) {
         // Crash on downbeat of every 2nd bar (every bar at climax)
         if beat.beat == 0 && beat.sixteenth == 0 && base_intensity > 0.52 {
             if beat.bar_count % 2 == 0 || base_intensity > 0.82 {
                 let vol = -8.0 + (base_intensity - 0.52).max(0.0) / 0.48 * 9.0;
-                commands.spawn((
-                    SamplePlayer::new(self.crash.clone())
-                        .with_volume(Volume::Decibels(vol)),
-                    PlaybackSettings::default(),
-                ));
+                notes.push(NoteEvent::from_diff(0).gain_db(vol).channel(0));
             }
         }
         // Ride shimmer on off-beats at medium intensity
         if base_intensity > 0.48 && beat.sixteenth == 2 && beat.beat % 2 == 1 {
-            commands.spawn((
-                SamplePlayer::new(self.ride.clone())
-                    .with_volume(Volume::Decibels(-6.0 + base_intensity * 3.0)),
-                PlaybackSettings::default(),
-            ));
+            notes.push(NoteEvent::from_diff(0).gain_db(-6.0 + base_intensity * 3.0).channel(1));
         }
     }
 }
@@ -727,38 +695,40 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // ── Orchestral Pad ────────────────────────────────────────────────────────
     commands.spawn(Musician::new(
         "Pad".to_string(),
-        OrchestraPad { sampler: Sampler { handle: pad_h, volume: -1.0 } },
-    ));
+        OrchestraPad,
+    ).with_instrument(Sampler { handle: pad_h, volume: -1.0 }));
 
     // ── String Ostinato (pluck — pizzicato feel) ───────────────────────────────
     commands.spawn(Musician::new(
         "Strings".to_string(),
-        OstinatoStrings { sampler: Sampler { handle: pluck_h, volume: -2.0 }, seq_idx: 0 },
-    ));
+        OstinatoStrings { seq_idx: 0 },
+    ).with_instrument(Sampler { handle: pluck_h, volume: -2.0 }));
 
     // ── Bass Ostinato (moog — cello/bass section) ─────────────────────────────
     // A second ostinato at lower pitch offsets for bass depth.
     // Runs at half rate (quarter notes only) for a walking bass feel.
     commands.spawn(Musician::new(
         "Bass".to_string(),
-        OstinatoStrings { sampler: Sampler { handle: moog_h, volume: -1.0 }, seq_idx: 3 },
-    ));
+        OstinatoStrings { seq_idx: 3 },
+    ).with_instrument(Sampler { handle: moog_h, volume: -1.0 }));
 
     // ── Brass Section ─────────────────────────────────────────────────────────
     // Three different hit samples cycle for timbral variation.
     commands.spawn(Musician::new(
         "Brass".to_string(),
-        BrassSection {
-            samples: vec![hit1_h, hit2_h, hit3_h],
-            volume: -1.0,
-        },
-    ));
+        BrassSection { num_samples: 3 },
+    ).with_instrument(Channels::default()
+        .with(Sampler { handle: hit1_h, volume: -1.0 })
+        .with(Sampler { handle: hit2_h, volume: -1.0 })
+        .with(Sampler { handle: hit3_h, volume: -1.0 })));
 
     // ── Cymbal Layer ──────────────────────────────────────────────────────────
     commands.spawn(Musician::new(
         "Cymbals".to_string(),
-        CymbalLayer { crash: crash_h, ride: ride_h },
-    ));
+        CymbalLayer,
+    ).with_instrument(Channels::default()
+        .with(Sampler { handle: crash_h, volume: 0.0 })
+        .with(Sampler { handle: ride_h, volume: 0.0 })));
 
     // ── Lead Melody (AABA soloist) ────────────────────────────────────────────
     commands.spawn(Musician::new(

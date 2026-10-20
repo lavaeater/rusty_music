@@ -1,0 +1,7 @@
+// A kick that ignores the note: pitch falls from 450 to 50 Hz on every hit.
+// @name glicol kick
+// @gain 0.8
+
+~pitch: ~trig >> envperc 0.001 0.06 >> mul 400 >> add 50
+~amp: ~trig >> envperc 0.001 0.35
+out: sin ~pitch >> mul ~amp

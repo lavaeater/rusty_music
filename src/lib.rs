@@ -1,4 +1,5 @@
 use bevy::app::{App, Plugin, Update};
+use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy_seedling::prelude::{AudioSample, SeedlingPlugins};
 use bevy::asset::Handle;
 use std::collections::HashMap;
@@ -17,6 +18,12 @@ pub mod player;
 pub mod conductor;
 pub mod musicians;
 pub mod sampler;
+pub mod instrument;
+pub mod harmony;
+pub mod situation;
+pub mod mix;
+#[cfg(feature = "synth")]
+pub mod synth;
 
 pub struct MusicPlugin {
     pub beats: u32,
@@ -41,9 +48,8 @@ impl Plugin for MusicPlugin {
             .insert_resource(Clock::new(self.beats, self.note_type, self.bpm))
             .insert_resource(Intensity(0.5))
             .add_message::<Beat>()
-            .add_systems(Update, (
-                progress_clock_system,
-                play_sound_on_the_beat));
+            .add_message::<situation::Stinger>()
+            .add_systems(Update, (progress_clock_system, play_sound_on_the_beat).chain());
     }
 }
 
