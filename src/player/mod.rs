@@ -4,10 +4,14 @@ use crate::clock::Beat;
 use crate::instrument::{NoteEvent, PlayContext};
 use crate::musicians::{Musician, Muted};
 use crate::musicians::conductor::Conductor;
+use crate::mix::Section;
 use crate::situation::Stinger;
 
 #[derive(Debug, Resource)]
 pub struct Intensity(pub f32);
+
+/// A musician, its synth node (if any), whether it's muted, and its mix section.
+type MusicianParts = (&'static mut Musician, Option<&'static FirewheelNode>, Has<Muted>, Option<&'static Section>);
 
 /// Ask every musician for its notes on each beat and hand them to its
 /// instrument, timed from the beat's audio-clock time. Queued [`Stinger`]s
@@ -22,7 +26,7 @@ pub fn play_sound_on_the_beat(
     time: Res<Time<Audio>>,
     conductor: Res<Conductor>,
     intensity: Res<Intensity>,
-    mut musicians: Query<(&mut Musician, Option<&FirewheelNode>, Has<Muted>)>,
+    mut musicians: Query<MusicianParts>,
     nodes: Query<&FirewheelNode>,
 ) {
     let find_node = |entity| nodes.get(entity).ok().map(|n| FirewheelNode(n.0));
@@ -31,7 +35,7 @@ pub fn play_sound_on_the_beat(
     for beat in beat_reader.read() {
         let chord = conductor.current_chord(beat.time_bars);
 
-        for (mut musician, node, muted) in musicians.iter_mut() {
+        for (mut musician, node, muted, section) in musicians.iter_mut() {
             if muted {
                 continue;
             }
@@ -41,7 +45,8 @@ pub fn play_sound_on_the_beat(
             if notes.is_empty() {
                 continue;
             }
-            let mut cx = PlayContext { commands: &mut commands, audio: &mut audio, time: &time, node, find_node: &find_node };
+            let section = section.copied();
+            let mut cx = PlayContext { commands: &mut commands, audio: &mut audio, time: &time, node, find_node: &find_node, section };
             for note in &notes {
                 let at = beat.time + note.offset as f64 * beat.step_secs;
                 let length = note.length.max(0.0) as f64 * beat.step_secs;
@@ -56,8 +61,9 @@ pub fn play_sound_on_the_beat(
                 continue;
             }
             let stinger = stingers.swap_remove(k);
-            let Ok((mut musician, node, _)) = musicians.get_mut(stinger.musician) else { continue };
-            let mut cx = PlayContext { commands: &mut commands, audio: &mut audio, time: &time, node, find_node: &find_node };
+            let Ok((mut musician, node, _, section)) = musicians.get_mut(stinger.musician) else { continue };
+            let section = section.copied();
+            let mut cx = PlayContext { commands: &mut commands, audio: &mut audio, time: &time, node, find_node: &find_node, section };
             for note in stinger.gesture.notes_for(chord) {
                 let at = beat.time + note.offset as f64 * beat.step_secs;
                 let length = note.length.max(0.0) as f64 * beat.step_secs;

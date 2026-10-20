@@ -21,6 +21,7 @@ pub mod sampler;
 pub mod instrument;
 pub mod harmony;
 pub mod situation;
+pub mod mix;
 #[cfg(feature = "synth")]
 pub mod synth;
 

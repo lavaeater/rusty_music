@@ -294,6 +294,47 @@ on synths (with a sampled 808 kit), with filter cutoffs following intensity.
 | 5.2 | Shared send effects: reverb (Firewheel `freeverb` or glicol `plate`), delay |
 | 5.3 | Sidechain-style ducking: pads duck on kick; music ducks under dialogue |
 
+#### Phase 5 results ✅
+
+- **Section buses** (`src/mix/`): `MixPlugin` builds the following graph
+  once, at startup. Each `Section` (Drums, Bass, Harmony, Lead, Fx) gets a
+  `VolumePanNode` bus, then a ducker, then the music bus, then `MainBus`, plus
+  per-section send levels into a shared Freeverb and a shared echo. Put a
+  `Section` on a musician:
+  - its **samples** play through a `SamplerPool(SectionPool(section))` wired to the bus;
+  - its **synths** are connected to the bus by an observer (synth-kit drums
+    are children of the kit musician and follow it).
+  A musician without a `Section` goes straight to the main bus, as before.
+- **The `Mix` resource is the whole mix as data**: per-section volume, pan and
+  reverb/echo sends; reverb room/damping/width; echo length *in clock steps*
+  (it follows tempo changes, e.g. from `TempoFollows`), feedback, damping and
+  ping-pong. Systems change it like any resource; `apply_mix` only touches
+  nodes whose values changed.
+- **Two new Firewheel nodes**: `EchoNode` (stereo feedback delay, damped
+  repeats, ping-pong, delay-time glide) and `DuckNode` (sample-accurate
+  sidechain). Both have plain-Rust DSP cores with unit tests.
+- **Ducking, two ways**: `Mix::duck_db` lowers the whole music bus at a
+  constant rate in dB (dialogue, cutscenes). `Sidechain::new(instrument)
+  .channel(0).ducks(&mixer, Section::Harmony, 7.0, 0.22)` makes an
+  instrument's notes duck other sections on their exact frame, scaled by
+  velocity (the kick pumping the pads).
+- **Lesson learned**: the first ducker interpolated gain linearly, so a deep
+  dip climbed back above -6 dB within ~40 ms, too short to hear. It now runs
+  its envelope in dB, and a unit test checks that recovery takes a real
+  fraction of the release. Triggers are also applied at their exact frame
+  from the event timestamp: Firewheel processed 1024-frame blocks here without
+  splitting them at our events.
+- **Examples**: `synth_game`'s mix reacts too: the reverb opens into a hall
+  in the garden, the kick pumps the harmony, and holding Space ducks the music
+  14 dB as if for dialogue. `synth_band` plays through the mixer as well.
+- **Measured** (recordings): the dialogue duck took the music from about
+  0.07 to 0.014–0.02 rms (about -12 dB) and back. Stereo correlation dropped
+  to about 0.6–0.84 (mono synths before), from the reverb and ping-pong. No
+  clipping. `synth_band -- --samples` plays its 808s through the drum pool.
+- **Enables seedling's `effects` feature**, and `firewheel` is now a regular
+  dependency (same revision as seedling's, so it adds no extra build).
+
+
 ### Phase 6 — Situational awareness  *(the fun part)*
 | # | Task |
 |---|------|
@@ -361,8 +402,8 @@ on synths (with a sampled 808 kit), with filter cutoffs following intensity.
 
 ## 6. Suggested order of work
 
-*Status: Phases 0, 1, 2, 3 and 6 are done; 4 (glicol text, hot reload) and
-5 (buses, reverb, ducking) remain.*
+*Status: Phases 0, 1, 2, 3, 5 and 6 are done; Phase 4 (glicol text, hot
+reload, bevy_glicol extraction) remains.*
 
 Phase 0 first, because it decides the DSP backend. Then Phase 1 and Phase 2
 together, since both change the `MusicPlayer` contract and are best done in one

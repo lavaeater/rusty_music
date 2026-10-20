@@ -31,14 +31,14 @@ keywords.workspace = true
 bevy = { version = "0.19.0", default-features = false, features = [
     "bevy_asset",
 ] }
-bevy_seedling = { version = "0.8.0", default-features = false, features = ["wav", "cpal"] }
+bevy_seedling = { version = "0.8.0", default-features = false, features = ["wav", "cpal", "effects"] }
 rand = "0.10.1"
 bevy-rusty-music-macros = { version="0.1.0", path = "macros" }
 glicol_synth = { git = "https://github.com/lavaeater/glicol", branch = "main", optional = true }
 # Must match glicol_synth's hashbrown: its `Node` trait takes a hashbrown map.
 hashbrown = { version = "0.14", optional = true }
 # Same rev as bevy_seedling; needed by name for firewheel's `Diff`/`Patch` derives.
-firewheel = { git = "https://github.com/BillyDM/Firewheel", rev = "fdf9fbb", default-features = false, optional = true }
+firewheel = { git = "https://github.com/BillyDM/Firewheel", rev = "fdf9fbb", default-features = false }
 
 [dev-dependencies]
 bevy = { version = "0.19.0", default-features = false, features = [
@@ -60,7 +60,7 @@ toml = "0.8"
 
 [features]
 default = []
-synth = ["dep:glicol_synth", "dep:hashbrown", "dep:firewheel"]
+synth = ["dep:glicol_synth", "dep:hashbrown"]
 
 [profile.dev.package."*"]
 opt-level = 3

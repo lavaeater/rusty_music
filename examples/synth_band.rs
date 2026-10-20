@@ -9,6 +9,9 @@
 //! - drums from a **synth kit** (`kick`, `snare`, `hat`), or the sampled 808 kit
 //!   with `-- --samples`.
 //!
+//! Everything plays through the mixer (`MixPlugin`): a bus per section, with
+//! shared reverb and a tempo-synced ping-pong echo on the lead.
+//!
 //! Intensity sweeps up and down over 32 bars and is mapped onto the synths'
 //! filters: the "situational knob" a game would drive from danger, speed, tension…
 //!
@@ -23,6 +26,7 @@ use rand::{RngExt, SeedableRng};
 
 use rusty_music::clock::{Beat, Clock};
 use rusty_music::instrument::NoteEvent;
+use rusty_music::mix::{MixPlugin, Section};
 use rusty_music::musicians::arpeggiator::Arpeggiator;
 use rusty_music::musicians::conductor::Conductor;
 use rusty_music::musicians::drummer::{generate_hihat_beat, generate_kick_beat, generate_snare_beat, Drummer, SuperDrummer};
@@ -160,7 +164,7 @@ fn main() {
             MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_millis(4))),
             AssetPlugin::default(),
         ))
-        .add_plugins((MusicPlugin { beats: 4, note_type: 4, bpm: 112.0 }, SynthPlugin))
+        .add_plugins((MusicPlugin { beats: 4, note_type: 4, bpm: 112.0 }, MixPlugin, SynthPlugin))
         .insert_resource(Conductor { chords: chords(), chord_length_bars: 4.0 })
         .insert_resource(Intensity(0.3))
         .add_systems(Startup, setup)
@@ -172,29 +176,33 @@ fn setup(mut commands: Commands, assets: Res<AssetServer>) {
     let (node, config) = synth(SynthPatch::acid_bass(), -6.0);
     commands.spawn((
         synth_musician("Acid", AcidBassist::new(303), -24.0, node, config),
+        Section::Bass,
         FilterFollowsIntensity { low: 180.0, high: 1_400.0 },
     ));
 
     let (node, config) = synth(SynthPatch::pluck(), -12.0);
     commands.spawn((
         synth_musician("Arp", Arpeggiator::default(), 0.0, node, config),
+        Section::Harmony,
         FilterFollowsIntensity { low: 300.0, high: 2_500.0 },
     ));
 
     let (node, config) = synth(SynthPatch::glide_lead(), -11.0);
     commands.spawn((
         synth_musician("Lead", Soloist::with_bars(2), 12.0, node, config),
+        Section::Lead,
         FilterFollowsIntensity { low: 700.0, high: 3_500.0 },
     ));
 
     let (node, config) = synth(SynthPatch::pad(), -4.0);
     commands.spawn((
         synth_musician("Pad", PadPlayer, -12.0, node, config),
+        Section::Harmony,
         FilterFollowsIntensity { low: 400.0, high: 2_000.0 },
     ));
 
     let (node, config) = synth(SynthPatch::bell(), -16.0);
-    commands.spawn(synth_musician("Bell", Sparkles(StdRng::seed_from_u64(9)), 24.0, node, config));
+    commands.spawn((synth_musician("Bell", Sparkles(StdRng::seed_from_u64(9)), 24.0, node, config), Section::Fx));
 
     if std::env::args().any(|a| a == "--samples") {
         // Hybrid: sampled drums under synths. Instruments mix freely within one band.
@@ -203,7 +211,7 @@ fn setup(mut commands: Commands, assets: Res<AssetServer>) {
             create_drummer_only(assets.load("samples/glicol/808sd.wav"), -3.0, generate_snare_beat()),
             create_drummer_only(assets.load("samples/glicol/808ch.wav"), -10.0, generate_hihat_beat()),
         ]);
-        commands.spawn(Musician::new("Drums".into(), drums));
+        commands.spawn((Musician::new("Drums".into(), drums), Section::Drums));
     } else {
         let drums = SuperDrummer::new(vec![
             Drummer::pattern(generate_kick_beat()),
@@ -211,7 +219,8 @@ fn setup(mut commands: Commands, assets: Res<AssetServer>) {
             Drummer::pattern(generate_hihat_beat()),
         ]);
         let kit = vec![(SynthPatch::kick(), 36.0, -5.0), (SynthPatch::snare(), 55.0, -6.0), (SynthPatch::hat(), 60.0, -14.0)];
-        spawn_synth_kit(&mut commands, "Drums", drums, kit);
+        let drums = spawn_synth_kit(&mut commands, "Drums", drums, kit);
+        commands.entity(drums).insert(Section::Drums);
     }
 }
 

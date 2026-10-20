@@ -24,7 +24,7 @@ use bevy_seedling::firewheel::{
     },
     Volume,
 };
-use bevy_seedling::prelude::{AudioContext, FirewheelNode, RegisterNode};
+use bevy_seedling::prelude::{AudioContext, Connect, FirewheelNode, RegisterNode};
 
 pub use engine::{NoteMsg, LATENCY};
 pub use patch::{Adsr, FilterMod, FilterMode, Fm, OscSpec, SynthPatch, VoiceMode, Wave};
@@ -32,6 +32,7 @@ use engine::SynthEngine;
 
 use crate::instrument::{Channels, Instrument, NoteEvent, PlayContext};
 use crate::musicians::{MusicPlayer, Musician};
+use crate::mix::{Mixer, Section};
 use crate::situation::{Dim, MusicState};
 
 /// Registers [`SynthNode`] with bevy_seedling.
@@ -40,6 +41,7 @@ pub struct SynthPlugin;
 impl Plugin for SynthPlugin {
     fn build(&self, app: &mut App) {
         app.register_node::<SynthNode>()
+            .add_observer(route_to_section)
             .add_systems(Update, respond_to_mood.run_if(resource_exists::<MusicState>));
     }
 }
@@ -269,16 +271,58 @@ pub fn spawn_synth_kit(
     player: impl MusicPlayer + 'static,
     drums: Vec<(SynthPatch, f32, f32)>,
 ) -> Entity {
+    spawn_synth_kit_with(commands, name, player, drums, |kit| Box::new(kit))
+}
+
+/// [`spawn_synth_kit`], with a chance to wrap the kit's instrument, e.g. in a
+/// [`Sidechain`](crate::mix::Sidechain) so the kick pumps the pads.
+/// The drum synths are children of the returned musician entity.
+pub fn spawn_synth_kit_with(
+    commands: &mut Commands,
+    name: impl Into<String>,
+    player: impl MusicPlayer + 'static,
+    drums: Vec<(SynthPatch, f32, f32)>,
+    wrap: impl FnOnce(Channels) -> Box<dyn Instrument>,
+) -> Entity {
     let mut kit = Channels::default();
+    let mut drum_entities = Vec::new();
     for (patch, pitch, volume_db) in drums {
         let name = Name::new(format!("synth drum: {}", patch.name));
         let mut config = SynthConfig::new(patch);
         config.voices = 2;
         let node = SynthNode::for_patch(&config.patch).volume_db(volume_db);
         let drum = commands.spawn((name, node, config)).id();
+        drum_entities.push(drum);
         kit = kit.with(SynthInstrument::on(drum).transpose(pitch - crate::instrument::SAMPLE_ROOT));
     }
-    commands.spawn(Musician::new(name.into(), player).with_instrument(kit)).id()
+    let mut musician = Musician::new(name.into(), player);
+    musician.instrument = wrap(kit);
+    let musician = commands.spawn(musician).id();
+    for drum in drum_entities {
+        commands.entity(drum).insert(ChildOf(musician));
+    }
+    musician
+}
+
+/// When a [`Section`] is put on a synth musician (or a synth kit, whose drums
+/// are its children), route its synth(s) into that section's mixer bus
+/// instead of straight to the main bus.
+fn route_to_section(
+    insert: On<Insert, Section>,
+    mixer: Option<Res<Mixer>>,
+    sections: Query<&Section>,
+    synths: Query<(), With<SynthNode>>,
+    children: Query<&Children>,
+    mut commands: Commands,
+) {
+    let (Some(mixer), Ok(section)) = (mixer, sections.get(insert.entity)) else { return };
+    let bus = mixer.bus(*section);
+    let kids = children.get(insert.entity).map(|c| c.to_vec()).unwrap_or_default();
+    for entity in std::iter::once(insert.entity).chain(kids) {
+        if synths.contains(entity) {
+            commands.entity(entity).connect(bus);
+        }
+    }
 }
 
 // ── Responding to the situation ───────────────────────────────────────────────

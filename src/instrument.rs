@@ -81,6 +81,8 @@ pub struct PlayContext<'a, 'w, 's> {
     /// Look up the Firewheel node of any entity, for instruments that play a
     /// node elsewhere (e.g. one synth per drum in a kit).
     pub find_node: &'a dyn Fn(Entity) -> Option<FirewheelNode>,
+    /// The musician's mix section, if any: samples play through its pool.
+    pub section: Option<crate::mix::Section>,
 }
 
 pub trait Instrument: Send + Sync {
@@ -93,7 +95,10 @@ pub fn schedule_sample(cx: &mut PlayContext, player: SamplePlayer, speed: f64, a
     let mut events = AudioEvents::new(cx.time);
     let settings = PlaybackSettings::default().with_playback(false).with_speed(speed);
     settings.play_at(None, InstantSeconds(at), &mut events);
-    cx.commands.spawn((events, settings, player));
+    let mut sample = cx.commands.spawn((events, settings, player));
+    if let Some(section) = cx.section {
+        sample.insert(crate::mix::SectionPool(section));
+    }
 }
 
 impl Instrument for Sampler {
