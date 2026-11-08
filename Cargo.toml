@@ -28,7 +28,7 @@ keywords.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.19.0", default-features = false, features = [
+bevy = { version = "0.20.1", default-features = false, features = [
     "bevy_asset",
 ] }
 bevy_seedling = { version = "0.8.0", default-features = false, features = ["wav", "cpal", "effects"] }
@@ -40,11 +40,12 @@ glicol_parser = { git = "https://github.com/lavaeater/glicol", branch = "main", 
 petgraph = { version = "0.6", default-features = false, features = ["stable_graph"], optional = true }
 # Must match glicol_synth's hashbrown: its `Node` trait takes a hashbrown map.
 hashbrown = { version = "0.14", optional = true }
-# Same rev as bevy_seedling; needed by name for firewheel's `Diff`/`Patch` derives.
-firewheel = { git = "https://github.com/BillyDM/Firewheel", rev = "fdf9fbb", default-features = false }
+# The same Firewheel as bevy_seedling (0.12, patched below for Bevy 0.20); needed by name
+# for its `Diff`/`Patch` derives.
+firewheel = { version = "0.12", default-features = false }
 
 [dev-dependencies]
-bevy = { version = "0.19.0", default-features = false, features = [
+bevy = { version = "0.20.1", default-features = false, features = [
     "2d_bevy_render",
     "default_app",
     "picking",
@@ -106,10 +107,21 @@ name = "sample_browser"
 path = "examples/sample_browser.rs"
 
 
-# bevy_seedling has no crates.io release targeting Bevy 0.19; its `master` (0.8.0) does.
-# Kept in sync with the same patch in the parent aliens-vs-suburbia manifest.
+# bevy_seedling has no crates.io release targeting Bevy 0.20; our fork's `bevy-0.20` branch
+# does. Kept in sync with the same patch in the parent aliens-vs-suburbia manifest.
 [patch.crates-io]
-bevy_seedling = { git = "https://github.com/corvusprudens/bevy_seedling", rev = "9db62d12daa11a2ffbd9da1565154127eac0a241" }
+bevy_seedling = { git = "https://github.com/lavaeater/bevy_seedling", rev = "519c25bad4d7a36148136666f32499cececdd33b" }
+# Firewheel 0.12 with its Bevy dependency bumped to 0.20 (and a `glam-33` feature), which the
+# seedling fork needs. It lives in the game repo, next to this submodule:
+# `../vendor/firewheel-bevy-0.20` (see its README). Remove once upstream supports Bevy 0.20.
+firewheel-core = { path = "../vendor/firewheel-bevy-0.20/firewheel-core" }
+firewheel-graph = { path = "../vendor/firewheel-bevy-0.20/firewheel-graph" }
+firewheel-nodes = { path = "../vendor/firewheel-bevy-0.20/firewheel-nodes" }
+firewheel-cpal = { path = "../vendor/firewheel-bevy-0.20/firewheel-cpal" }
+firewheel-rtaudio = { path = "../vendor/firewheel-bevy-0.20/firewheel-rtaudio" }
+firewheel-symphonium = { path = "../vendor/firewheel-bevy-0.20/firewheel-symphonium" }
+firewheel-macros = { path = "../vendor/firewheel-bevy-0.20/firewheel-macros" }
+firewheel = { path = "../vendor/firewheel-bevy-0.20/firewheel" }
 
 [[example]]
 name = "improv_orchestra"
